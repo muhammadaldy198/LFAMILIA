@@ -404,23 +404,58 @@ end)
 
 refreshConnectedList()
 
-local httpRequest = (syn and syn.request) or http_request or request
+local httpRequest = (syn and syn.request) or (http_request) or (request)
 
 local function sendRequest(url, data)
-    if not url or url == "" or not httpRequest then return false end
-    
-    -- MENGGUNAKAN PROXY HYRA SECARA OTOMATIS
-    local safeUrl = url:gsub("discord.com", "hooks.hyra.io"):gsub("discordapp.com", "hooks.hyra.io")
-    
-    local ok = pcall(function()
-        httpRequest({
-            Url = safeUrl,
+    if not url or url == "" then
+        return false, "Webhook URL kosong"
+    end
+
+    if not httpRequest then
+        return false, "Executor tidak menyediakan request/http_request/syn.request"
+    end
+
+    local encoded
+    local encodeOk, encodeErr = pcall(function()
+        encoded = HttpService:JSONEncode(data)
+    end)
+
+    if not encodeOk then
+        return false, "JSONEncode gagal: " .. tostring(encodeErr)
+    end
+
+    local response
+    local requestOk, requestErr = pcall(function()
+        response = httpRequest({
+            Url = url,
             Method = "POST",
-            Headers = {["Content-Type"] = "application/json"},
-            Body = HttpService:JSONEncode(data)
+            Headers = {
+                ["Content-Type"] = "application/json"
+            },
+            Body = encoded
         })
     end)
-    return ok
+
+    if not requestOk then
+        return false, "Request gagal: " .. tostring(requestErr)
+    end
+
+    if not response then
+        return false, "Tidak ada response dari server"
+    end
+
+    local statusCode = tonumber(response.StatusCode)
+
+    if statusCode and statusCode >= 200 and statusCode < 300 then
+        return true, "HTTP " .. tostring(statusCode)
+    end
+
+    local body = tostring(response.Body or "")
+    if #body > 300 then
+        body = body:sub(1, 300)
+    end
+
+    return false, "HTTP " .. tostring(statusCode or "?") .. " | " .. body
 end
 
 local function mentionFor(playerName)
@@ -629,17 +664,18 @@ Preview.MouseButton1Click:Connect(function()
     local testData = { Name = "Astralune", Rarity = "Forgotten", Mutation = "Binary", Weight = 1100000 }
     
     local payload = buildEmbedPayload(LocalPlayer.Name, testData, testImageUrl)
-    local success = sendRequest(Config.Webhook, payload)
-    if success then
-        Status.Text = "● TEST SENT"
-        Status.TextColor3 = Theme.Cyan
-        WebhookStatus.Text = "✓ Format Embed sukses dikirim!"
-        WebhookStatus.TextColor3 = Theme.Green
-    else
-        Status.Text = "● FAILED"
-        Status.TextColor3 = Theme.Red
-        WebhookStatus.Text = "⚠ Server Discord menolak request."
-        WebhookStatus.TextColor3 = Theme.Red
+    local success, result = sendRequest(Config.Webhook, payload)
+
+if success then
+    Status.Text = "● TEST SENT"
+    Status.TextColor3 = Theme.Cyan
+    WebhookStatus.Text = "✓ Webhook berhasil dikirim (" .. result .. ")"
+    WebhookStatus.TextColor3 = Theme.Green
+else
+    Status.Text = "● FAILED"
+    Status.TextColor3 = Theme.Red
+    WebhookStatus.Text = "⚠ " .. result
+    WebhookStatus.TextColor3 = Theme.Red
     end
 end)
 
