@@ -609,18 +609,34 @@ Preview.MouseButton1Click:Connect(function()
         return
     end
 
-    local testData = { Name = "Moonwake Ray", Rarity = "Secret", Mutation = "Albino", Weight = 250000 }
-    sendRequest(
-        Config.Webhook,
-        {
-            username = "LFAMILIA",
-            flags = 32768,
-            components = buildComponents(LocalPlayer.Name, testData, nil),
-            allowed_mentions = { parse = {"users"} }
-        }
-    )
-    Status.Text = "● TEST SENT"
-    Status.TextColor3 = Theme.Cyan
+    local testData = {
+        Name = "Moonwake Ray",
+        Rarity = "Secret",
+        Mutation = "Albino",
+        Weight = 250000
+    }
+
+    -- PERBAIKAN UTAMA: Menyusun payload khusus yang mematuhi aturan Components V2 Discord
+    local payload = {
+        username = "LFAMILIA",
+        flags = 32768, -- WAJIB: Memberitahu Discord bahwa ini adalah format Components V2
+        components = buildComponents(LocalPlayer.Name, testData, nil),
+        allowed_mentions = { parse = {"users"} }
+    }
+
+    local success = sendRequest(Config.Webhook, payload)
+    
+    if success then
+        Status.Text = "● TEST SENT"
+        Status.TextColor3 = Theme.Cyan
+        WebhookStatus.Text = "✓ Pesan tes berhasil dikirim!"
+        WebhookStatus.TextColor3 = Theme.Green
+    else
+        Status.Text = "● FAILED"
+        Status.TextColor3 = Theme.Red
+        WebhookStatus.Text = "⚠ Gagal! Periksa koneksi internet eksekutor."
+        WebhookStatus.TextColor3 = Theme.Red
+    end
 end)
 
 --- [Sisa event PlayerAdded, PlayerRemoving, Minimize, Restore, Close, dan showPage tetap sama seperti sebelumnya]
