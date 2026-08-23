@@ -377,7 +377,7 @@ SaveAccount.MouseButton1Click:Connect(function()
     accountStatus.TextColor3 = Theme.Green
 end)
 -- =================================================================
--- BAGIAN 3 VERSI COMPONENTS V2 (FORMAT ASLI DENGAN FIX BUG VARIABEL)
+-- BAGIAN 3: EMBED CONVERSION & RADAR ENGINE LOGIC
 -- =================================================================
 
 local httpRequest = (syn and syn.request) or http_request or request
@@ -437,8 +437,7 @@ local function getRobloxAssetImage(assetId)
     local id = tostring(assetId):match("%d+")
     if not id then return nil end
 
-    -- 1. PERBAIKAN URL: Menggunakan proksi terpercaya agar tidak diblokir HttpService
-    local url = "https://thumbnails.roproxy.com/v1/assets?assetIds=" .. id .. "&returnPolicy=PlaceHolder&size=420x420&format=Png&isCircular=false"
+    local url = "https://roproxy.com" .. id .. "&returnPolicy=PlaceHolder&size=420x420&format=Png&isCircular=false"
     
     local success, result = pcall(function()
         return httpRequest({Url = url, Method = "GET"})
@@ -450,8 +449,7 @@ local function getRobloxAssetImage(assetId)
         return HttpService:JSONDecode(result.Body)
     end)
 
-    -- 2. PERBAIKAN STRUKTUR JSON: Menghapus indeks [1] karena data.data mengembalikan objek langsung
-    if not decodeSuccess or not data or not data.data then return nil end
+    if not decodeSuccess or not data or not data.data or not data.data then return nil end
     return data.data.imageUrl
 end
 
@@ -503,43 +501,36 @@ local function formatWeight(weight)
     return string.format("%.2f kg", n)
 end
 
--- FORMAT COMPONENT V2 ASLI (DENGAN PERBAIKAN)
-local function buildComponents(playerName, fishData, imageUrl)
+local function buildEmbedPayload(playerName, fishData, imageUrl)
     local playerMention = mentionFor(playerName)
-    local text = "Hey " .. playerMention .. "\n"
-        .. "**Player**   : " .. playerName .. "\n"
-        .. "**Fish**     : " .. fishData.Name .. "\n"
-        .. "**Rarity**   : " .. fishData.Rarity .. "\n"
-        .. "**Mutation** : " .. fishData.Mutation .. "\n"
-        .. "**Weight**   : " .. formatWeight(fishData.Weight)
+    
+    local targetPlayer = Players:FindFirstChild(playerName)
+    local displayName = targetPlayer and targetPlayer.DisplayName or playerName
+    local formattedPlayerName = playerName .. " (" .. displayName .. ")"
 
-    local section = {
-        type = 9,
-        components = {
-            { type = 10, content = text }
+    local descriptionText = "Player      : **" .. formattedPlayerName .. "**\n"
+        .. "Caught    : **" .. fishData.Name .. "**\n"
+        .. "Rarity       : **" .. fishData.Rarity .. "**\n"
+        .. "Mutation : **" .. fishData.Mutation .. "**\n"
+        .. "Weight     : **" .. formatWeight(fishData.Weight) .. "**"
+
+    local embed = {
+        title = "### PLAYER NOTIFICATION",
+        description = descriptionText,
+        color = 9542550,
+        footer = {
+            text = "©2026 LFAMILIA • V2"
         }
     }
 
-    if imageUrl then
-        section.accessory = {
-            type = 11,
-            media = { url = imageUrl },
-            description = fishData.Name
-        }
+    if imageUrl and imageUrl ~= "" then
+        embed.thumbnail = { url = imageUrl }
     end
 
     return {
-        {
-            type = 17,
-            accent_color = 9542550,
-            components = {
-                { type = 10, content = "**PLAYER**\n**NOTIFICATION**" },
-                { type = 14, divider = true, spacing = 1 },
-                section,
-                { type = 14, divider = true, spacing = 1 },
-                { type = 10, content = "©2026 LFAMILIA • V4" }
-            }
-        }
+        content = "Hey " .. playerMention .. "!!",
+        embeds = { embed },
+        allowed_mentions = { parse = {"users"} }
     }
 end
 
@@ -548,16 +539,8 @@ local function sendFish(playerName, item)
     if not passesFilter(data.Rarity, data.Mutation) then return end
     local imageUrl = getFishImage(item, data.AssetId)
 
-    -- FIX PAYLOAD AUTOMATION: Menghilangkan pembungkusan kurung kurawal ganda
-    sendRequest(
-        Config.Webhook,
-        {
-            username = "LFAMILIA",
-            flags = 32768,
-            components = buildComponents(playerName, data, imageUrl),
-            allowed_mentions = { parse = {"users"} }
-        }
-    )
+    local payload = buildEmbedPayload(playerName, data, imageUrl)
+    sendRequest(Config.Webhook, payload)
 end
 
 local monitored = {}
@@ -611,36 +594,28 @@ Preview.MouseButton1Click:Connect(function()
     end
 
     local testData = {
-        Name = "Moonwake Ray",
-        Rarity = "Secret",
-        Mutation = "Albino",
-        Weight = 250000
+        Name = "Astralune",
+        Rarity = "Forgotten",
+        Mutation = "Binary",
+        Weight = 1100000
     }
 
-    -- FIX PAYLOAD: Mengirimkan hasil buildComponents secara langsung tanpa pembungkusan ganda
-    local payload = {
-        username = "LFAMILIA",
-        flags = 32768, -- Menandakan format Components V2
-        components = buildComponents(LocalPlayer.Name, testData, "https://roproxy.com"),
-        allowed_mentions = { parse = {"users"} }
-    }
-
+    local payload = buildEmbedPayload(LocalPlayer.Name, testData, "https://rbxcdn.com")
     local success = sendRequest(Config.Webhook, payload)
     
     if success then
         Status.Text = "● TEST SENT"
         Status.TextColor3 = Theme.Cyan
-        WebhookStatus.Text = "✓ Format V2 sukses dikirim!"
+        WebhookStatus.Text = "✓ Format Embed sukses dikirim!"
         WebhookStatus.TextColor3 = Theme.Green
     else
         Status.Text = "● FAILED"
         Status.TextColor3 = Theme.Red
-        WebhookStatus.Text = "⚠ Server Discord menolak format JSON ini."
+        WebhookStatus.Text = "⚠ Server Discord menolak request."
         WebhookStatus.TextColor3 = Theme.Red
     end
 end)
 
---- [Sisa event PlayerAdded, PlayerRemoving, Minimize, Restore, Close, dan showPage tetap sama seperti sebelumnya]
 Players.PlayerAdded:Connect(function(player)
     if RadarActive then
         monitorPlayer(player)
