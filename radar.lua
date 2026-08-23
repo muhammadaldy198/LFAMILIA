@@ -437,7 +437,7 @@ local function getRobloxAssetImage(assetId)
     local id = tostring(assetId):match("%d+")
     if not id then return nil end
 
-    local url = "https://roblox.com" .. id .. "&returnPolicy=PlaceHolder&size=420x420&format=Png&isCircular=false"
+    local url = "https://roproxy.com" .. id .. "&returnPolicy=PlaceHolder&size=420x420&format=Png&isCircular=false"
     local success, result = pcall(function()
         return httpRequest({Url = url, Method = "GET"})
     end)
