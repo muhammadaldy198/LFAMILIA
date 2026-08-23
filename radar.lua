@@ -437,20 +437,22 @@ local function getRobloxAssetImage(assetId)
     local id = tostring(assetId):match("%d+")
     if not id then return nil end
 
-    local url = "https://roproxy.com" .. id .. "&returnPolicy=PlaceHolder&size=420x420&format=Png&isCircular=false"
+    -- 1. PERBAIKAN URL: Menggunakan proksi terpercaya agar tidak diblokir HttpService
+    local url = "https://thumbnails.roproxy.com/v1/assets?assetIds=" .. id .. "&returnPolicy=PlaceHolder&size=420x420&format=Png&isCircular=false"
+    
     local success, result = pcall(function()
         return httpRequest({Url = url, Method = "GET"})
     end)
 
-    -- FIX: Variabel 'ok' diganti menjadi 'success' agar gambar terproses
     if not success or not result or not result.Body then return nil end
 
     local decodeSuccess, data = pcall(function()
         return HttpService:JSONDecode(result.Body)
     end)
 
-    if not decodeSuccess or not data or not data.data or not data.data[1] then return nil end
-    return data.data[1].imageUrl
+    -- 2. PERBAIKAN STRUKTUR JSON: Menghapus indeks [1] karena data.data mengembalikan objek langsung
+    if not decodeSuccess or not data or not data.data then return nil end
+    return data.data.imageUrl
 end
 
 local function getFishImage(item, knownAssetId)
