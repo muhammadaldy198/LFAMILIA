@@ -217,7 +217,6 @@ local RadarPage = newPage("Radar")
 local FilterPage = newPage("Fish Filter")
 local WebhookPage = newPage("Webhook")
 local AccountsPage = newPage("Accounts")
-
 -- RADAR PAGE ELEMENTS
 local RadarActive = false
 local Status = makeLabel(RadarPage, "● OFFLINE", UDim2.fromOffset(180, 32), UDim2.fromOffset(18, 14), Enum.Font.GothamBold, Theme.Red)
@@ -235,7 +234,8 @@ DisconnectScroll.Position = UDim2.fromOffset(18, 212)
 DisconnectScroll.BackgroundColor3 = Theme.Panel2
 DisconnectScroll.BorderSizePixel = 0
 DisconnectScroll.ScrollBarThickness = 4
-DisconnectScroll.CanvasSize = UDim2.new()
+DisconnectScroll.CanvasSize = UDim2.new(0, 0, 0, 0)
+DisconnectScroll.AutomaticCanvasSize = Enum.AutomaticSize.Y
 DisconnectScroll.Parent = RadarPage
 corner(DisconnectScroll, 8)
 stroke(DisconnectScroll)
@@ -256,10 +256,6 @@ local function addDisconnect(playerName)
     local t = makeLabel(row, os.date("%H:%M:%S"), UDim2.new(0.28, 0, 1, 0), UDim2.new(0.70, 0, 0, 0), Enum.Font.Gotham, Theme.Muted)
     t.TextXAlignment = Enum.TextXAlignment.Right
     t.TextYAlignment = Enum.TextYAlignment.Center
-
-    task.defer(function()
-        DisconnectScroll.CanvasSize = UDim2.new(0, 0, 0, DisconnectLayout.AbsoluteContentSize.Y + 6)
-    end)
 end
 
 -- FISH FILTER ELEMENTS
@@ -310,22 +306,29 @@ local DiscordBox = makeBox(AccountsPage, "Discord User ID / ID angka", "", UDim2
 local LoadPlayers = makeButton(AccountsPage, "LOAD PLAYERS IN SERVER", UDim2.new(1, -20, 0, 36), UDim2.fromOffset(10, 82), Theme.Purple)
 
 local PlayerScroll = Instance.new("ScrollingFrame")
-PlayerScroll.Size = UDim2.new(1, -20, 0, 180)
+PlayerScroll.Size = UDim2.new(1, -20, 0, 175)
 PlayerScroll.Position = UDim2.fromOffset(10, 126)
 PlayerScroll.BackgroundColor3 = Theme.Panel2
 PlayerScroll.BorderSizePixel = 0
-PlayerScroll.ScrollBarThickness = 4
-PlayerScroll.CanvasSize = UDim2.new()
+PlayerScroll.ScrollBarThickness = 5
+PlayerScroll.ScrollBarImageColor3 = Theme.Purple
+PlayerScroll.CanvasSize = UDim2.new(0, 0, 0, 0)
+PlayerScroll.AutomaticCanvasSize = Enum.AutomaticSize.Y
+PlayerScroll.ClipsDescendants = true
 PlayerScroll.Parent = AccountsPage
 corner(PlayerScroll, 8)
 stroke(PlayerScroll)
 
 local PlayerLayout = Instance.new("UIListLayout")
-PlayerLayout.Padding = UDim.new(0, 4)
+PlayerLayout.Padding = UDim.new(0, 5)
 PlayerLayout.Parent = PlayerScroll
 
+PlayerLayout:GetPropertyChangedSignal("AbsoluteContentSize"):Connect(function()
+    PlayerScroll.CanvasSize = UDim2.new(0, 0, 0, PlayerLayout.AbsoluteContentSize.Y + 10)
+end)
+
 local selectedPlayer = nil
-local accountStatus = makeLabel(AccountsPage, "Pilih player yang ingin dikaitkan.", UDim2.new(1, -20, 0, 22), UDim2.fromOffset(10, 314), Enum.Font.Gotham, Theme.Muted)
+local accountStatus = makeLabel(AccountsPage, "Pilih player yang ingin dikaitkan.", UDim2.new(1, -20, 0, 22), UDim2.fromOffset(10, 310), Enum.Font.Gotham, Theme.Muted)
 
 local function refreshPlayerList()
     for _, child in ipairs(PlayerScroll:GetChildren()) do
@@ -334,22 +337,20 @@ local function refreshPlayerList()
     selectedPlayer = nil
 
     for _, player in ipairs(Players:GetPlayers()) do
-        local b = makeButton(PlayerScroll, player.Name .. "  •  " .. player.DisplayName, UDim2.new(1, -8, 0, 34), UDim2.new(), Theme.Background)
+        local b = makeButton(PlayerScroll, "  " .. player.DisplayName .. " (@" .. player.Name .. ")", UDim2.new(1, -12, 0, 34), UDim2.new(), Theme.Background)
+        b.TextXAlignment = Enum.TextXAlignment.Left
         b.Parent = PlayerScroll
+        
         b.MouseButton1Click:Connect(function()
             selectedPlayer = player.Name
             for _, other in ipairs(PlayerScroll:GetChildren()) do
                 if other:IsA("TextButton") then other.BackgroundColor3 = Theme.Background end
             end
             b.BackgroundColor3 = Theme.Purple
-            accountStatus.Text = "Selected: " .. player.Name
+            accountStatus.Text = "Selected: " .. player.DisplayName
             accountStatus.TextColor3 = Theme.Green
         end)
     end
-
-    task.defer(function()
-        PlayerScroll.CanvasSize = UDim2.new(0, 0, 0, PlayerLayout.AbsoluteContentSize.Y + 6)
-    end)
 end
 
 LoadPlayers.MouseButton1Click:Connect(function()
@@ -359,11 +360,11 @@ LoadPlayers.MouseButton1Click:Connect(function()
         return
     end
     refreshPlayerList()
-    accountStatus.Text = "Pilih player dari server."
+    accountStatus.Text = "Pilih player dari server (Gunakan scroll jika penuh)."
     accountStatus.TextColor3 = Theme.Muted
 end)
 
-local SaveAccount = makeButton(AccountsPage, "SAVE SELECTED PLAYER", UDim2.new(1, -20, 0, 34), UDim2.fromOffset(10, 342), Theme.Purple)
+local SaveAccount = makeButton(AccountsPage, "SAVE SELECTED PLAYER", UDim2.new(1, -20, 0, 34), UDim2.fromOffset(10, 338), Theme.Purple)
 SaveAccount.MouseButton1Click:Connect(function()
     local discordId = DiscordBox.Text:gsub("%D", "")
     if discordId == "" or not selectedPlayer then
@@ -449,8 +450,8 @@ local function getRobloxAssetImage(assetId)
         return HttpService:JSONDecode(result.Body)
     end)
 
-    if not decodeSuccess or not data or not data.data or not data.data then return nil end
-    return data.data.imageUrl
+    if not decodeSuccess or not data or not data.data then return nil end
+    return data.data and data.data.imageUrl or nil
 end
 
 local function getFishImage(item, knownAssetId)
@@ -491,7 +492,6 @@ local function passesFilter(rarity, mutation)
 
     return allowed
 end
-
 local function formatWeight(weight)
     if weight == nil or tostring(weight) == "" then return "Unknown" end
     local n = tonumber(weight)
@@ -506,13 +506,13 @@ local function buildEmbedPayload(playerName, fishData, imageUrl)
     
     local targetPlayer = Players:FindFirstChild(playerName)
     local displayName = targetPlayer and targetPlayer.DisplayName or playerName
-    local formattedPlayerName = playerName .. " (" .. displayName .. ")"
 
-    local descriptionText = "Player      : **" .. formattedPlayerName .. "**\n"
-        .. "Caught    : **" .. fishData.Name .. "**\n"
-        .. "Rarity       : **" .. fishData.Rarity .. "**\n"
-        .. "Mutation : **" .. fishData.Mutation .. "**\n"
-        .. "Weight     : **" .. formatWeight(fishData.Weight) .. "**"
+    -- FORMAT BOX CODEBLOCK: Nilai variabel terbungkus kotak abu-abu (``) secara rapi
+    local descriptionText = "Player      : `" .. displayName .. "`\n"
+        .. "Caught    : `" .. fishData.Name .. "`\n"
+        .. "Rarity       : `" .. fishData.Rarity .. "`\n"
+        .. "Mutation : `" .. fishData.Mutation .. "`\n"
+        .. "Weight     : `" .. formatWeight(fishData.Weight) .. "`"
 
     local embed = {
         title = "### PLAYER NOTIFICATION",
@@ -600,7 +600,9 @@ Preview.MouseButton1Click:Connect(function()
         Weight = 1100000
     }
 
-    local payload = buildEmbedPayload(LocalPlayer.Name, testData, "https://rbxcdn.com")
+    local testImageUrl = "https://rbxcdn.com"
+    
+    local payload = buildEmbedPayload(LocalPlayer.Name, testData, testImageUrl)
     local success = sendRequest(Config.Webhook, payload)
     
     if success then
