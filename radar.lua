@@ -665,7 +665,7 @@ Preview.MouseButton1Click:Connect(function()
     end
     
     -- GANTI BARIS INI: Dari yang tadinya "https://rbxcdn.com" menjadi penarik ID aset asli
-    local testImageUrl = https://discord.com/channels/1442846959865172000/1497996576864473088/1541180161477705729 
+    local testImageUrl = "https://cdn.discordapp.com/attachments/1497996576864473088/1541180161095897249/image_aed88881_1.png?ex=6a8ca760&is=6a8b55e0&hm=730ba6e247657e7f80cbf9ed76d5a97a1e1cdc182c2db6134fb6f0c4aee6754c&" 
     local testData = { Name = "Astralune", Rarity = "Forgotten", Mutation = "Binary", Weight = 1100000 }
     
     local payload = buildEmbedPayload(LocalPlayer.Name, testData, testImageUrl)
