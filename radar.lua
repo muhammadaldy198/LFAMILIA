@@ -409,7 +409,7 @@ local httpRequest = (syn and syn.request) or http_request or request
 local function sendRequest(url, data)
     if not url or url == "" or not httpRequest then return false end
     
-    -- SISTEM AUTO-PROXY: Mengubah otomatis tautan agar bebas dari blokir Discord
+    -- MENGGUNAKAN PROXY HYRA SECARA OTOMATIS
     local safeUrl = url:gsub("discord.com", "hooks.hyra.io"):gsub("discordapp.com", "hooks.hyra.io")
     
     local ok = pcall(function()
@@ -545,7 +545,11 @@ local function buildEmbedPayload(playerName, fishData, imageUrl)
         color = embedColor,
         footer = { text = "©2026 LFAMILIA • V4" }
     }
-    if imageUrl and imageUrl ~= "" then embed.thumbnail = { url = imageUrl } end
+    
+    if imageUrl and imageUrl ~= "" and type(imageUrl) == "string" then 
+        embed.thumbnail = { url = imageUrl } 
+    end
+    
     return {
         content = "Hey " .. playerMention .. "!!",
         embeds = { embed },
@@ -620,8 +624,10 @@ Preview.MouseButton1Click:Connect(function()
         showPage("Webhook")
         return
     end
+    
     local testImageUrl = "https://imgur.com" 
     local testData = { Name = "Astralune", Rarity = "Forgotten", Mutation = "Binary", Weight = 1100000 }
+    
     local payload = buildEmbedPayload(LocalPlayer.Name, testData, testImageUrl)
     local success = sendRequest(Config.Webhook, payload)
     if success then
