@@ -577,7 +577,7 @@ local function buildEmbedPayload(playerName, fishData, imageUrl)
         .. "Weight     : `" .. formatWeight(fishData.Weight) .. "`"
 
     local embed = {
-        title = "### PLAYER NOTIFICATION",
+        title = "PLAYER NOTIFICATION",
         description = descriptionText,
         color = embedColor, -- Menerapkan perubahan warna adaptif di atas
         footer = { text = "©2026 LFAMILIA • V4" }
