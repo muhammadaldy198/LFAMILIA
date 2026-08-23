@@ -548,11 +548,12 @@ local function sendFish(playerName, item)
     if not passesFilter(data.Rarity, data.Mutation) then return end
     local imageUrl = getFishImage(item, data.AssetId)
 
+    -- FIX PAYLOAD AUTOMATION: Menghilangkan pembungkusan kurung kurawal ganda
     sendRequest(
         Config.Webhook,
         {
             username = "LFAMILIA",
-            flags = 32768, -- Flag wajib untuk Components V2
+            flags = 32768,
             components = buildComponents(playerName, data, imageUrl),
             allowed_mentions = { parse = {"users"} }
         }
@@ -616,11 +617,11 @@ Preview.MouseButton1Click:Connect(function()
         Weight = 250000
     }
 
-    -- PERBAIKAN UTAMA: Menyusun payload khusus yang mematuhi aturan Components V2 Discord
+    -- FIX PAYLOAD: Mengirimkan hasil buildComponents secara langsung tanpa pembungkusan ganda
     local payload = {
         username = "LFAMILIA",
-        flags = 32768, -- WAJIB: Memberitahu Discord bahwa ini adalah format Components V2
-        components = buildComponents(LocalPlayer.Name, testData, nil),
+        flags = 32768, -- Menandakan format Components V2
+        components = buildComponents(LocalPlayer.Name, testData, "https://roproxy.com"),
         allowed_mentions = { parse = {"users"} }
     }
 
@@ -629,12 +630,12 @@ Preview.MouseButton1Click:Connect(function()
     if success then
         Status.Text = "● TEST SENT"
         Status.TextColor3 = Theme.Cyan
-        WebhookStatus.Text = "✓ Pesan tes berhasil dikirim!"
+        WebhookStatus.Text = "✓ Format V2 sukses dikirim!"
         WebhookStatus.TextColor3 = Theme.Green
     else
         Status.Text = "● FAILED"
         Status.TextColor3 = Theme.Red
-        WebhookStatus.Text = "⚠ Gagal! Periksa koneksi internet eksekutor."
+        WebhookStatus.Text = "⚠ Server Discord menolak format JSON ini."
         WebhookStatus.TextColor3 = Theme.Red
     end
 end)
