@@ -1,7 +1,14 @@
 --[[
     LFAMILIA RADAR V4
-    Modern UI • Fish Filter • Webhook • Accounts
-    Minimize / Restore
+    - LFAMILIA branding
+    - Colored UI
+    - Minimize / Restore
+    - Rarity + Mutation filters
+    - Weight is displayed, NOT a filter
+    - Discord webhook notification with fish image
+    - Accounts: Discord ID -> select current server player
+    - Player Disconnect list
+    - No reconnect
 ]]
 
 local HttpService = game:GetService("HttpService")
@@ -15,7 +22,7 @@ local GUI_NAME = "LFAMILIA_Radar_V4"
 local Config = {
     Webhook = "",
     LogWebhook = "",
-    Database = {},
+    Accounts = {},
     Filters = {
         Secret = true,
         Forgotten = true,
@@ -27,19 +34,27 @@ local Config = {
 
 pcall(function()
     if isfile and isfile(CONFIG_FILE) then
-        local raw = readfile(CONFIG_FILE)
-        local data = HttpService:JSONDecode(raw)
+        local data = HttpService:JSONDecode(readfile(CONFIG_FILE))
 
         if type(data) == "table" then
-            for k, v in pairs(data) do
-                if k ~= "Filters" then
-                    Config[k] = v
-                end
-            end
+            Config.Webhook = data.Webhook or ""
+            Config.LogWebhook = data.LogWebhook or ""
+            Config.Accounts =
+                type(data.Accounts) == "table"
+                and data.Accounts
+                or {}
 
             if type(data.Filters) == "table" then
                 for k, v in pairs(data.Filters) do
                     Config.Filters[k] = v
+                end
+            end
+
+            if type(data.Database) == "table" then
+                for k, v in pairs(data.Database) do
+                    if Config.Accounts[k] == nil then
+                        Config.Accounts[k] = v
+                    end
                 end
             end
         end
@@ -89,6 +104,7 @@ end
 
 local function stroke(obj, color, thickness)
     local s = Instance.new("UIStroke")
+
     s.Color = color or Theme.Stroke
     s.Thickness = thickness or 1
     s.Parent = obj
@@ -176,8 +192,8 @@ ScreenGui.Parent = CoreGui
 
 local Main = Instance.new("Frame")
 
-Main.Size = UDim2.fromOffset(540, 410)
-Main.Position = UDim2.new(0.5, -270, 0.5, -205)
+Main.Size = UDim2.fromOffset(560, 450)
+Main.Position = UDim2.new(0.5, -280, 0.5, -225)
 Main.BackgroundColor3 = Theme.Background
 Main.BorderSizePixel = 0
 Main.Active = true
@@ -239,7 +255,6 @@ local Restore = makeButton(
 )
 
 Restore.Visible = false
-corner(Restore, 12)
 
 local Tabs = Instance.new("Frame")
 
@@ -261,7 +276,6 @@ stroke(Content)
 
 local pages = {}
 local tabButtons = {}
-local activePage
 
 local function newPage(name)
     local page = Instance.new("Frame")
@@ -279,24 +293,22 @@ end
 
 local function showPage(name)
     for n, p in pairs(pages) do
-        p.Visible = (n == name)
+        p.Visible = n == name
     end
 
     for n, b in pairs(tabButtons) do
         b.BackgroundColor3 =
-            (n == name)
+            n == name
             and Theme.Purple
             or Theme.Panel2
     end
-
-    activePage = name
 end
 
 local function addTab(name, x)
     local b = makeButton(
         Tabs,
         name,
-        UDim2.fromOffset(120, 36),
+        UDim2.fromOffset(130, 36),
         UDim2.fromOffset(x, 2),
         Theme.Panel2
     )
@@ -309,13 +321,16 @@ local function addTab(name, x)
 end
 
 addTab("Radar", 0)
-addTab("Fish Filter", 125)
-addTab("Webhook", 250)
-addTab("Accounts", 375)
+addTab("Fish Filter", 135)
+addTab("Webhook", 270)
+addTab("Accounts", 405)
+
 local RadarPage = newPage("Radar")
 local FilterPage = newPage("Fish Filter")
 local WebhookPage = newPage("Webhook")
 local AccountsPage = newPage("Accounts")
+
+-- RADAR PAGE
 
 local RadarActive = false
 
@@ -323,27 +338,18 @@ local Status = makeLabel(
     RadarPage,
     "● OFFLINE",
     UDim2.fromOffset(180, 32),
-    UDim2.fromOffset(18, 18),
+    UDim2.fromOffset(18, 14),
     Enum.Font.GothamBold,
     Theme.Red
 )
 
 Status.TextSize = 18
 
-makeLabel(
-    RadarPage,
-    "LFAMILIA V4 Radar",
-    UDim2.fromOffset(300, 24),
-    UDim2.fromOffset(18, 55),
-    Enum.Font.GothamBold,
-    Theme.Text
-)
-
 local Start = makeButton(
     RadarPage,
     "START RADAR",
-    UDim2.new(1, -36, 0, 44),
-    UDim2.fromOffset(18, 90),
+    UDim2.new(1, -36, 0, 42),
+    UDim2.fromOffset(18, 54),
     Theme.Purple
 )
 
@@ -351,32 +357,108 @@ local Preview = makeButton(
     RadarPage,
     "TEST WEBHOOK",
     UDim2.new(1, -36, 0, 38),
-    UDim2.fromOffset(18, 144),
+    UDim2.fromOffset(18, 104),
     Theme.Panel2
 )
 
 local Info = makeLabel(
     RadarPage,
     "Monitoring: 0 players",
-    UDim2.new(1, -36, 0, 24),
-    UDim2.fromOffset(18, 198),
+    UDim2.new(1, -36, 0, 22),
+    UDim2.fromOffset(18, 150),
     Enum.Font.Gotham,
     Theme.Muted
 )
 
-local function countAccounts()
-    local n = 0
+makeLabel(
+    RadarPage,
+    "PLAYER DISCONNECT",
+    UDim2.fromOffset(260, 22),
+    UDim2.fromOffset(18, 184),
+    Enum.Font.GothamBold,
+    Theme.Cyan
+)
 
-    for _ in pairs(Config.Database) do
-        n += 1
-    end
+local DisconnectScroll = Instance.new("ScrollingFrame")
 
-    return n
+DisconnectScroll.Size =
+    UDim2.new(1, -36, 0, 145)
+
+DisconnectScroll.Position =
+    UDim2.fromOffset(18, 212)
+
+DisconnectScroll.BackgroundColor3 =
+    Theme.Panel2
+
+DisconnectScroll.BorderSizePixel = 0
+DisconnectScroll.ScrollBarThickness = 4
+DisconnectScroll.CanvasSize = UDim2.new()
+DisconnectScroll.Parent = RadarPage
+
+corner(DisconnectScroll, 8)
+stroke(DisconnectScroll)
+
+local DisconnectLayout =
+    Instance.new("UIListLayout")
+
+DisconnectLayout.Padding =
+    UDim.new(0, 4)
+
+DisconnectLayout.Parent =
+    DisconnectScroll
+
+local function addDisconnect(playerName)
+    local row = Instance.new("Frame")
+
+    row.Size =
+        UDim2.new(1, -8, 0, 32)
+
+    row.BackgroundTransparency = 1
+    row.Parent = DisconnectScroll
+
+    local label = makeLabel(
+        row,
+        "● " .. playerName,
+        UDim2.new(0.68, 0, 1, 0),
+        UDim2.fromOffset(8, 0),
+        Enum.Font.GothamBold,
+        Theme.Red
+    )
+
+    label.TextYAlignment =
+        Enum.TextYAlignment.Center
+
+    local t = makeLabel(
+        row,
+        os.date("%H:%M:%S"),
+        UDim2.new(0.28, 0, 1, 0),
+        UDim2.new(0.70, 0, 0, 0),
+        Enum.Font.Gotham,
+        Theme.Muted
+    )
+
+    t.TextXAlignment =
+        Enum.TextXAlignment.Right
+
+    t.TextYAlignment =
+        Enum.TextYAlignment.Center
+
+    task.defer(function()
+        DisconnectScroll.CanvasSize =
+            UDim2.new(
+                0,
+                0,
+                0,
+                DisconnectLayout.AbsoluteContentSize.Y + 6
+            )
+    end)
 end
+
+-- FISH FILTER
 
 makeLabel(
     FilterPage,
-    "RARITY FILTER",
+    "FISH FILTER",
     UDim2.fromOffset(300, 22),
     UDim2.fromOffset(18, 12),
     Enum.Font.GothamBold,
@@ -402,7 +484,8 @@ local function addToggle(name)
         Theme.Panel2
     )
 
-    local state = Config.Filters[name] == true
+    local state =
+        Config.Filters[name] == true
 
     local label = makeLabel(
         b,
@@ -413,7 +496,8 @@ local function addToggle(name)
         Theme.Text
     )
 
-    label.TextYAlignment = Enum.TextYAlignment.Center
+    label.TextYAlignment =
+        Enum.TextYAlignment.Center
 
     local dot = makeLabel(
         b,
@@ -424,15 +508,21 @@ local function addToggle(name)
         state and Theme.Green or Theme.Muted
     )
 
-    dot.TextXAlignment = Enum.TextXAlignment.Right
-    dot.TextYAlignment = Enum.TextYAlignment.Center
+    dot.TextXAlignment =
+        Enum.TextXAlignment.Right
+
+    dot.TextYAlignment =
+        Enum.TextYAlignment.Center
 
     b.MouseButton1Click:Connect(function()
         state = not state
 
-        Config.Filters[name] = state
+        Config.Filters[name] =
+            state
 
-        dot.Text = state and "ON" or "OFF"
+        dot.Text =
+            state and "ON" or "OFF"
+
         dot.TextColor3 =
             state
             and Theme.Green
@@ -448,6 +538,16 @@ for _, name in ipairs(filterOrder) do
     addToggle(name)
 end
 
+makeLabel(
+    FilterPage,
+    "Weight tetap ditampilkan pada notifikasi; bukan filter.",
+    UDim2.new(1, -36, 0, 25),
+    UDim2.fromOffset(18, 244),
+    Enum.Font.Gotham,
+    Theme.Muted
+)
+-- WEBHOOK PAGE
+
 local WebhookBox = makeBox(
     WebhookPage,
     "Discord webhook utama",
@@ -457,7 +557,7 @@ local WebhookBox = makeBox(
 
 local LogWebhookBox = makeBox(
     WebhookPage,
-    "Webhook log join/leave (opsional)",
+    "Webhook disconnect (opsional)",
     Config.LogWebhook,
     UDim2.fromOffset(10, 60)
 )
@@ -485,84 +585,224 @@ SaveWebhook.MouseButton1Click:Connect(function()
 
     saveConfig()
 
-    WebhookStatus.Text = "✓ Webhook tersimpan"
-    WebhookStatus.TextColor3 = Theme.Green
+    WebhookStatus.Text =
+        "✓ Webhook tersimpan"
+
+    WebhookStatus.TextColor3 =
+        Theme.Green
 end)
 
-local RobloxBox = makeBox(
+-- ACCOUNTS PAGE
+
+makeLabel(
     AccountsPage,
-    "Username Roblox",
-    "",
-    UDim2.fromOffset(10, 14)
+    "DISCORD ACCOUNT",
+    UDim2.fromOffset(260, 22),
+    UDim2.fromOffset(10, 10),
+    Enum.Font.GothamBold,
+    Theme.Cyan
 )
 
 local DiscordBox = makeBox(
     AccountsPage,
-    "Discord User ID",
+    "Discord User ID / ID angka",
     "",
-    UDim2.fromOffset(10, 60)
+    UDim2.fromOffset(10, 38)
 )
 
-local AddAccount = makeButton(
+local LoadPlayers = makeButton(
     AccountsPage,
-    "ADD ACCOUNT",
-    UDim2.new(1, -20, 0, 38),
-    UDim2.fromOffset(10, 108),
+    "LOAD PLAYERS IN SERVER",
+    UDim2.new(1, -20, 0, 36),
+    UDim2.fromOffset(10, 82),
     Theme.Purple
 )
 
-local AccountStatus = makeLabel(
+local PlayerScroll = Instance.new("ScrollingFrame")
+
+PlayerScroll.Size =
+    UDim2.new(1, -20, 0, 180)
+
+PlayerScroll.Position =
+    UDim2.fromOffset(10, 126)
+
+PlayerScroll.BackgroundColor3 =
+    Theme.Panel2
+
+PlayerScroll.BorderSizePixel = 0
+PlayerScroll.ScrollBarThickness = 4
+PlayerScroll.CanvasSize = UDim2.new()
+PlayerScroll.Parent = AccountsPage
+
+corner(PlayerScroll, 8)
+stroke(PlayerScroll)
+
+local PlayerLayout =
+    Instance.new("UIListLayout")
+
+PlayerLayout.Padding =
+    UDim.new(0, 4)
+
+PlayerLayout.Parent =
+    PlayerScroll
+
+local selectedPlayer = nil
+
+local accountStatus = makeLabel(
     AccountsPage,
-    "Accounts: " .. countAccounts(),
-    UDim2.new(1, -20, 0, 24),
-    UDim2.fromOffset(10, 154),
+    "Pilih player yang ingin dikaitkan.",
+    UDim2.new(1, -20, 0, 22),
+    UDim2.fromOffset(10, 314),
     Enum.Font.Gotham,
     Theme.Muted
 )
 
-AddAccount.MouseButton1Click:Connect(function()
-    local rbx =
-        RobloxBox.Text
-        :gsub("^%s+", "")
-        :gsub("%s+$", "")
+local function refreshPlayerList()
+    for _, child in ipairs(
+        PlayerScroll:GetChildren()
+    ) do
+        if child:IsA("TextButton") then
+            child:Destroy()
+        end
+    end
 
-    local dc =
-        DiscordBox.Text
-        :gsub("%D", "")
+    selectedPlayer = nil
 
-    if rbx ~= "" and dc ~= "" then
-        Config.Database[rbx] = dc
+    for _, player in ipairs(
+        Players:GetPlayers()
+    ) do
 
-        RobloxBox.Text = ""
-        DiscordBox.Text = ""
+        local b = makeButton(
+            PlayerScroll,
+            player.Name
+                .. "  •  "
+                .. player.DisplayName,
+            UDim2.new(1, -8, 0, 34),
+            UDim2.new(),
+            Theme.Background
+        )
+
+        b.Parent = PlayerScroll
+
+        b.MouseButton1Click:Connect(
+            function()
+                selectedPlayer =
+                    player.Name
+
+                for _, other in ipairs(
+                    PlayerScroll:GetChildren()
+                ) do
+                    if other:IsA("TextButton") then
+                        other.BackgroundColor3 =
+                            Theme.Background
+                    end
+                end
+
+                b.BackgroundColor3 =
+                    Theme.Purple
+
+                accountStatus.Text =
+                    "Selected: "
+                    .. player.Name
+
+                accountStatus.TextColor3 =
+                    Theme.Green
+            end
+        )
+    end
+
+    task.defer(function()
+        PlayerScroll.CanvasSize =
+            UDim2.new(
+                0,
+                0,
+                0,
+                PlayerLayout.AbsoluteContentSize.Y + 6
+            )
+    end)
+end
+
+LoadPlayers.MouseButton1Click:Connect(
+    function()
+        if DiscordBox.Text:gsub(
+            "%s+",
+            ""
+        ) == "" then
+
+            accountStatus.Text =
+                "Masukkan Discord User ID terlebih dahulu."
+
+            accountStatus.TextColor3 =
+                Theme.Red
+
+            return
+        end
+
+        refreshPlayerList()
+
+        accountStatus.Text =
+            "Pilih player dari server."
+
+        accountStatus.TextColor3 =
+            Theme.Muted
+    end
+)
+
+local SaveAccount = makeButton(
+    AccountsPage,
+    "SAVE SELECTED PLAYER",
+    UDim2.new(1, -20, 0, 34),
+    UDim2.fromOffset(10, 342),
+    Theme.Purple
+)
+
+SaveAccount.MouseButton1Click:Connect(
+    function()
+        local discordId =
+            DiscordBox.Text:gsub(
+                "%D",
+                ""
+            )
+
+        if discordId == ""
+            or not selectedPlayer then
+
+            accountStatus.Text =
+                "Masukkan Discord ID dan pilih player."
+
+            accountStatus.TextColor3 =
+                Theme.Red
+
+            return
+        end
+
+        Config.Accounts[selectedPlayer] =
+            discordId
 
         saveConfig()
 
-        AccountStatus.Text =
-            "✓ Saved • Accounts: "
-            .. countAccounts()
+        accountStatus.Text =
+            "✓ "
+            .. selectedPlayer
+            .. " tersimpan."
 
-        AccountStatus.TextColor3 = Theme.Green
-    else
-        AccountStatus.Text =
-            "Isi username Roblox dan Discord ID."
-
-        AccountStatus.TextColor3 = Theme.Red
+        accountStatus.TextColor3 =
+            Theme.Green
     end
-end)
+)
 
--- HTTP REQUEST
+-- HTTP
+
 local httpRequest =
     (syn and syn.request)
     or http_request
     or request
 
 local function sendRequest(url, data)
-    if not url or url == "" then
-        return false
-    end
+    if not url
+        or url == ""
+        or not httpRequest then
 
-    if not httpRequest then
         return false
     end
 
@@ -572,56 +812,274 @@ local function sendRequest(url, data)
             Method = "POST",
 
             Headers = {
-                ["Content-Type"] = "application/json"
+                ["Content-Type"] =
+                    "application/json"
             },
 
-            Body = HttpService:JSONEncode(data)
+            Body =
+                HttpService:JSONEncode(
+                    data
+                )
         })
     end)
 
     return ok
 end
 
-local function mentionFor(name)
-    local id = Config.Database[name]
+local function mentionFor(playerName)
+    local id =
+        Config.Accounts[playerName]
 
     if id and id ~= "" then
         return "<@" .. id .. ">"
     end
 
-    return "@" .. name
+    return "@" .. playerName
 end
 
-local function passesFilter(rarity, mutation)
+-- Read a value from attributes using
+-- several likely Fish It names.
+
+local function readAttributeRecursive(
+    root,
+    aliases
+)
+    if not root then
+        return nil
+    end
+
+    for _, alias in ipairs(aliases) do
+        local ok, value =
+            pcall(function()
+                return root:GetAttribute(
+                    alias
+                )
+            end)
+
+        if ok
+            and value ~= nil
+            and tostring(value) ~= "" then
+
+            return value
+        end
+    end
+
+    for _, obj in ipairs(
+        root:GetDescendants()
+    ) do
+
+        for _, alias in ipairs(aliases) do
+            local ok, value =
+                pcall(function()
+                    return obj:GetAttribute(
+                        alias
+                    )
+                end)
+
+            if ok
+                and value ~= nil
+                and tostring(value) ~= "" then
+
+                return value
+            end
+        end
+    end
+
+    return nil
+end
+
+local function readFishData(item)
+    local name =
+        item.Name
+
+    local rarity =
+        readAttributeRecursive(
+            item,
+            {
+                "Rarity",
+                "RarityName",
+                "FishRarity",
+                "Tier",
+                "RarityType"
+            }
+        )
+
+    local mutation =
+        readAttributeRecursive(
+            item,
+            {
+                "Mutation",
+                "MutationName",
+                "FishMutation",
+                "Mutations"
+            }
+        )
+
+    local weight =
+        readAttributeRecursive(
+            item,
+            {
+                "Weight",
+                "FishWeight",
+                "Fish_Weight",
+                "KG",
+                "Kg",
+                "WeightKg"
+            }
+        )
+
+    local assetId =
+        readAttributeRecursive(
+            item,
+            {
+                "AssetId",
+                "ImageId",
+                "TextureId",
+                "FishAssetId",
+                "IconId"
+            }
+        )
+
+    return {
+        Name = tostring(name),
+
+        Rarity =
+            rarity
+            and tostring(rarity)
+            or "Unknown",
+
+        Mutation =
+            mutation
+            and tostring(mutation)
+            or "None",
+
+        Weight = weight,
+
+        AssetId = assetId
+    }
+end
+
+local function getFishImage(
+    item,
+    knownAssetId
+)
+    local assetId =
+        knownAssetId
+
+    if not assetId and item then
+        assetId =
+            readAttributeRecursive(
+                item,
+                {
+                    "AssetId",
+                    "ImageId",
+                    "TextureId",
+                    "FishAssetId",
+                    "IconId"
+                }
+            )
+    end
+
+    if not assetId and item then
+        pcall(function()
+            if item:IsA("Tool")
+                and item.TextureId ~= "" then
+
+                assetId =
+                    item.TextureId
+            end
+        end)
+    end
+
+    if not assetId and item then
+        for _, obj in ipairs(
+            item:GetDescendants()
+        ) do
+
+            if obj:IsA("Texture")
+                or obj:IsA("Decal") then
+
+                if obj.Texture ~= "" then
+                    assetId =
+                        obj.Texture
+
+                    break
+                end
+
+            elseif obj:IsA("SpecialMesh") then
+
+                if obj.TextureId ~= "" then
+                    assetId =
+                        obj.TextureId
+
+                    break
+                end
+
+            elseif obj:IsA("MeshPart") then
+
+                if obj.TextureID ~= "" then
+                    assetId =
+                        obj.TextureID
+
+                    break
+                end
+            end
+        end
+    end
+
+    if not assetId then
+        return nil
+    end
+
+    local id =
+        tostring(assetId):match(
+            "%d+"
+        )
+
+    if not id then
+        return nil
+    end
+
+    return
+        "https://www.roblox.com/asset-thumbnail/image"
+        .. "?assetId=" .. id
+        .. "&width=420"
+        .. "&height=420"
+        .. "&format=png"
+end
+local function passesFilter(
+    rarity,
+    mutation
+)
     local r =
         string.lower(
             tostring(rarity or "")
         )
 
-    local allowedRarity = false
+    local allowed = false
 
     if r == "secret"
         and Config.Filters.Secret then
 
-        allowedRarity = true
+        allowed = true
     end
 
     if r == "forgotten"
         and Config.Filters.Forgotten then
 
-        allowedRarity = true
+        allowed = true
     end
 
     if r == "mythic"
         and Config.Filters.Mythic then
 
-        allowedRarity = true
+        allowed = true
     end
 
     if r == "legendary"
         and Config.Filters.Legendary then
 
-        allowedRarity = true
+        allowed = true
     end
 
     local hasMutation =
@@ -634,133 +1092,90 @@ local function passesFilter(rarity, mutation)
     if hasMutation
         and Config.Filters.Mutation then
 
-        allowedRarity = true
+        allowed = true
     end
 
-    return allowedRarity
+    return allowed
 end
 
--- Ambil asset/texture ID dari ikan.
-local function getFishAssetId(item)
-    if not item then
-        return nil
+local function formatWeight(weight)
+    if weight == nil
+        or tostring(weight) == "" then
+
+        return "Unknown"
     end
 
-    local assetId =
-        item:GetAttribute("AssetId")
-        or item:GetAttribute("ImageId")
-        or item:GetAttribute("TextureId")
+    local n = tonumber(weight)
 
-    if not assetId and item:IsA("Tool") then
-        local ok, value = pcall(function()
-            return item.TextureId
-        end)
-
-        if ok then
-            assetId = value
-        end
+    if not n then
+        return tostring(weight)
     end
 
-    if not assetId then
-        local handle =
-            item:FindFirstChild("Handle")
-
-        if handle then
-            local texture =
-                handle:FindFirstChildWhichIsA(
-                    "Texture"
-                )
-
-            if texture then
-                assetId = texture.Texture
-            end
-        end
-    end
-
-    if not assetId then
-        return nil
-    end
-
-    return tostring(assetId):match("%d+")
-end
-
-local function getFishImage(item)
-    local assetId =
-        getFishAssetId(item)
-
-    if not assetId then
-        return nil
-    end
-
-    return
-        "https://www.roblox.com/asset-thumbnail/image"
-        .. "?assetId=" .. assetId
-        .. "&width=420"
-        .. "&height=420"
-        .. "&format=png"
-end
-
-local function sendFish(
-    playerName,
-    fishName,
-    rarity,
-    mutation,
-    item
-)
-    if not passesFilter(
-        rarity,
-        mutation
-    ) then
-        return
-    end
-
-    local mutationText =
-        (
-            mutation
-            and tostring(mutation) ~= ""
+    if n >= 1000000 then
+        return string.format(
+            "%.2fM kg",
+            n / 1000000
         )
-        and tostring(mutation)
-        or "None"
 
-    local weight = "Unknown"
-
-    if item then
-        weight =
-            item:GetAttribute("Weight")
-            or item:GetAttribute("FishWeight")
-            or "Unknown"
+    elseif n >= 1000 then
+        return string.format(
+            "%.2fK kg",
+            n / 1000
+        )
     end
 
-    local imageUrl =
-        getFishImage(item)
+    return string.format(
+        "%.2f kg",
+        n
+    )
+end
+
+local function buildEmbed(
+    playerName,
+    fishData,
+    imageUrl
+)
+    local playerMention =
+        mentionFor(playerName)
 
     local description =
-        "━━━━━━━━━━━━━━━━━━━━\n\n"
-        .. "Hey " .. mentionFor(playerName) .. "\n\n"
-        .. "Player : **" .. playerName .. "**\n"
-        .. "Fish : **" .. fishName .. "**\n"
-        .. "Rarity : **" .. tostring(rarity) .. "**\n"
-        .. "Mutation : **" .. mutationText .. "**\n"
-        .. "Weight : **" .. tostring(weight) .. " kg**\n\n"
-        .. "━━━━━━━━━━━━━━━━━━━━"
+        "────────────────────────\n"
+        .. "Hey "
+        .. playerMention
+        .. "\n"
+        .. "`Player`   : "
+        .. playerName
+        .. "\n"
+        .. "`Fish`     : "
+        .. fishData.Name
+        .. "\n"
+        .. "`Rarity`   : "
+        .. fishData.Rarity
+        .. "\n"
+        .. "`Mutation` : "
+        .. fishData.Mutation
+        .. "\n"
+        .. "`Weight`   : "
+        .. formatWeight(
+            fishData.Weight
+        )
+        .. "\n"
+        .. "────────────────────────"
 
     local embed = {
         title =
-            "# " .. playerName
-            .. "\nNOTIFICATION",
+            "### "
+            .. playerName
+            .. "\n### **NOTIFICATION**",
 
         color = 9542550,
 
         description = description,
 
         footer = {
-            text = "©2026 LFAMILIA • V1"
-        },
-
-        timestamp =
-            os.date(
-                "!%Y-%m-%dT%H:%M:%SZ"
-            )
+            text =
+                "©2026 LFAMILIA • V1"
+        }
     }
 
     if imageUrl then
@@ -768,6 +1183,37 @@ local function sendFish(
             url = imageUrl
         }
     end
+
+    return embed
+end
+
+local function sendFish(
+    playerName,
+    item
+)
+    local data =
+        readFishData(item)
+
+    if not passesFilter(
+        data.Rarity,
+        data.Mutation
+    ) then
+
+        return
+    end
+
+    local imageUrl =
+        getFishImage(
+            item,
+            data.AssetId
+        )
+
+    local embed =
+        buildEmbed(
+            playerName,
+            data,
+            imageUrl
+        )
 
     sendRequest(
         Config.Webhook,
@@ -777,6 +1223,7 @@ local function sendFish(
         }
     )
 end
+
 local monitored = {}
 
 local function monitorPlayer(player)
@@ -787,28 +1234,30 @@ local function monitorPlayer(player)
     monitored[player] = true
 
     local function check(item)
-        if not RadarActive then
-            return
-        end
+        if not RadarActive
+            or not item:IsA("Tool") then
 
-        if not item:IsA("Tool") then
             return
         end
 
         local rarity =
-            item:GetAttribute("Rarity")
+            readAttributeRecursive(
+                item,
+                {
+                    "Rarity",
+                    "RarityName",
+                    "FishRarity",
+                    "Tier",
+                    "RarityType"
+                }
+            )
 
-        if not rarity then
-            return
+        if rarity then
+            sendFish(
+                player.Name,
+                item
+            )
         end
-
-        sendFish(
-            player.Name,
-            item.Name,
-            rarity,
-            item:GetAttribute("Mutation"),
-            item
-        )
     end
 
     task.spawn(function()
@@ -827,7 +1276,9 @@ local function monitorPlayer(player)
 
     player.CharacterAdded:Connect(
         function(char)
-            char.ChildAdded:Connect(check)
+            char.ChildAdded:Connect(
+                check
+            )
         end
     )
 
@@ -840,19 +1291,25 @@ end
 
 Start.MouseButton1Click:Connect(
     function()
-        RadarActive = not RadarActive
+        RadarActive =
+            not RadarActive
 
         if RadarActive then
-            Start.Text = "STOP RADAR"
+            Start.Text =
+                "STOP RADAR"
+
             Start.BackgroundColor3 =
                 Theme.Green
 
-            Status.Text = "● ONLINE"
+            Status.Text =
+                "● ONLINE"
+
             Status.TextColor3 =
                 Theme.Green
 
-            for _, player in
-                ipairs(Players:GetPlayers()) do
+            for _, player in ipairs(
+                Players:GetPlayers()
+            ) do
 
                 if player ~= LocalPlayer then
                     monitorPlayer(player)
@@ -862,16 +1319,24 @@ Start.MouseButton1Click:Connect(
             Info.Text =
                 "Monitoring: "
                 .. tostring(
-                    #Players:GetPlayers() - 1
+                    math.max(
+                        #Players:GetPlayers()
+                            - 1,
+                        0
+                    )
                 )
                 .. " players"
 
         else
-            Start.Text = "START RADAR"
+            Start.Text =
+                "START RADAR"
+
             Start.BackgroundColor3 =
                 Theme.Purple
 
-            Status.Text = "● OFFLINE"
+            Status.Text =
+                "● OFFLINE"
+
             Status.TextColor3 =
                 Theme.Red
 
@@ -895,45 +1360,31 @@ Preview.MouseButton1Click:Connect(
             return
         end
 
-        local description =
-            "━━━━━━━━━━━━━━━━━━━━\n\n"
-            .. "Hey " .. mentionFor(LocalPlayer.Name) .. "\n\n"
-            .. "Player : **" .. LocalPlayer.Name .. "**\n"
-            .. "Fish : **Demo Fish**\n"
-            .. "Rarity : **Secret**\n"
-            .. "Mutation : **Albino**\n"
-            .. "Weight : **250K kg**\n\n"
-            .. "━━━━━━━━━━━━━━━━━━━━"
+        local testData = {
+            Name = "Moonwake Ray",
+            Rarity = "Secret",
+            Mutation = "Albino",
+            Weight = 250000
+        }
+
+        local embed =
+            buildEmbed(
+                LocalPlayer.Name,
+                testData,
+                nil
+            )
 
         sendRequest(
             Config.Webhook,
             {
                 username = "LFAMILIA",
-
-                embeds = {{
-                    title =
-                        "# "
-                        .. LocalPlayer.Name
-                        .. "\nNOTIFICATION",
-
-                    color = 9542550,
-
-                    description = description,
-
-                    footer = {
-                        text =
-                            "©2026 LFAMILIA • V1"
-                    },
-
-                    timestamp =
-                        os.date(
-                            "!%Y-%m-%dT%H:%M:%SZ"
-                        )
-                }}
+                embeds = {embed}
             }
         )
 
-        Status.Text = "● TEST SENT"
+        Status.Text =
+            "● TEST SENT"
+
         Status.TextColor3 =
             Theme.Cyan
     end
@@ -947,7 +1398,11 @@ Players.PlayerAdded:Connect(
             Info.Text =
                 "Monitoring: "
                 .. tostring(
-                    #Players:GetPlayers() - 1
+                    math.max(
+                        #Players:GetPlayers()
+                            - 1,
+                        0
+                    )
                 )
                 .. " players"
         end
@@ -958,18 +1413,25 @@ Players.PlayerRemoving:Connect(
     function(player)
         monitored[player] = nil
 
+        addDisconnect(
+            player.Name
+        )
+
         if RadarActive
             and Config.LogWebhook ~= "" then
 
             sendRequest(
                 Config.LogWebhook,
                 {
-                    username = "LFAMILIA",
+                    username =
+                        "LFAMILIA",
 
                     content =
                         "🔴 `"
                         .. player.Name
-                        .. "` left the server."
+                        .. "` left the server at `"
+                        .. os.date("%H:%M:%S")
+                        .. "`."
                 }
             )
         end
