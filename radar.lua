@@ -620,7 +620,7 @@ Preview.MouseButton1Click:Connect(function()
         showPage("Webhook")
         return
     end
-    local testImageUrl = "https://discordapp.com&" 
+    local testImageUrl = "https://imgur.com" 
     local testData = { Name = "Astralune", Rarity = "Forgotten", Mutation = "Binary", Weight = 1100000 }
     local payload = buildEmbedPayload(LocalPlayer.Name, testData, testImageUrl)
     local success = sendRequest(Config.Webhook, payload)
