@@ -132,7 +132,7 @@ ScreenGui.ResetOnSpawn = false
 ScreenGui.Parent = CoreGui
 
 local Main = Instance.new("Frame")
-Main.Size = UDim2.fromScale(0.85, 0.8) -- Skala responsif anti-meluber di HP
+Main.Size = UDim2.fromScale(0.85, 0.8) -- Skala responsif anti-meluber di HP Delta
 Main.Position = UDim2.fromScale(0.5, 0.5)
 Main.AnchorPoint = Vector2.new(0.5, 0.5) -- Anchor center sempurna
 Main.BackgroundColor3 = Theme.Background
@@ -236,7 +236,7 @@ local DisconnectLayout = Instance.new("UIListLayout")
 DisconnectLayout.Padding = UDim.new(0, 4)
 DisconnectLayout.Parent = DisconnectScroll
 
--- Sinkronisasi ukuran tinggi konten dinamis untuk menangani bug Delta Mobile
+-- Menangani kendala rendering kanvas gulir pada platform seluler Android
 DisconnectLayout:GetPropertyChangedSignal("AbsoluteContentSize"):Connect(function()
     DisconnectScroll.CanvasSize = UDim2.new(0, 0, 0, DisconnectLayout.AbsoluteContentSize.Y + 10)
 end)
@@ -428,7 +428,7 @@ end)
 
 refreshConnectedList()
 -- =================================================================
--- LOGIK ENGINE RADAR & PROTEKSI KEAMANAN (FISH IT ENGINE)
+-- LOGIK ENGINE RADAR & PROTEKSI KEAMANAN (FISH IT ENGINE - PART 1)
 -- =================================================================
 local httpRequest = (syn and syn.request) or http_request or request
 
@@ -471,12 +471,61 @@ local function readFishData(item)
     local rarity = readAttributeRecursive(item, {"Rarity", "RarityName", "FishRarity", "Tier", "RarityType"})
     local mutation = readAttributeRecursive(item, {"Mutation", "MutationName", "FishMutation", "Mutations"})
     local weight = readAttributeRecursive(item, {"Weight", "FishWeight", "Fish_Weight", "KG", "Kg", "WeightKg"})
+    local assetId = readAttributeRecursive(item, {"AssetId", "ImageId", "TextureId", "FishAssetId", "IconId"})
+
     return {
         Name = tostring(name),
         Rarity = rarity and tostring(rarity) or "Unknown",
         Mutation = mutation and tostring(mutation) or "None",
-        Weight = weight
+        Weight = weight,
+        AssetId = assetId
     }
+end
+
+local function getRobloxAssetImage(assetId)
+    if not assetId or not httpRequest then return nil end
+    local id = tostring(assetId):match("%d+")
+    if not id then return nil end
+
+    -- Jalur API Proxy Thumbnail resmi agar gambar ikan muncul di Discord
+    local url = "https://roproxy.com" .. id .. "&returnPolicy=PlaceHolder&size=420x420&format=Png&isCircular=false"
+    
+    local success, result = pcall(function()
+        return httpRequest({Url = url, Method = "GET"})
+    end)
+
+    if not success or not result or not result.Body then return nil end
+
+    local decodeSuccess, data = pcall(function()
+        return HttpService:JSONDecode(result.Body)
+    end)
+
+    if not decodeSuccess or not data or not data.data or not data.data then return nil end
+    return data.data.imageUrl or nil
+end
+
+local function getFishImage(item, knownAssetId)
+    local assetId = knownAssetId
+    if not assetId and item then
+        assetId = readAttributeRecursive(item, {"AssetId", "ImageId", "TextureId", "FishAssetId", "IconId"})
+    end
+    if not assetId and item then
+        pcall(function()
+            if item:IsA("Tool") and item.TextureId ~= "" then assetId = item.TextureId end
+        end)
+    end
+    if not assetId and item then
+        for _, obj in ipairs(item:GetDescendants()) do
+            if obj:IsA("Texture") or obj:IsA("Decal") then
+                if obj.Texture ~= "" then assetId = obj.Texture break end
+            elseif obj:IsA("SpecialMesh") then
+                if obj.TextureId ~= "" then assetId = obj.TextureId break end
+            elseif obj:IsA("MeshPart") then
+                if obj.TextureID ~= "" then assetId = obj.TextureID break end
+            end
+        end
+    end
+    return getRobloxAssetImage(assetId)
 end
 
 local function passesFilter(rarity, mutation)
@@ -490,7 +539,9 @@ local function passesFilter(rarity, mutation)
     if hasMutation and Config.Filters.Mutation then allowed = true end
     return allowed
 end
-
+-- =================================================================
+-- LOGIK ENGINE RADAR & PROTEKSI KEAMANAN (FISH IT ENGINE - PART 2)
+-- =================================================================
 local function formatWeight(weight)
     if weight == nil or tostring(weight) == "" then return "Unknown" end
     local n = tonumber(weight)
@@ -500,10 +551,24 @@ local function formatWeight(weight)
     return string.format("%.2f kg", n)
 end
 
-local function buildEmbedPayload(playerName, fishData)
+local function buildEmbedPayload(playerName, fishData, imageUrl)
     local playerMention = mentionFor(playerName)
     local targetPlayer = Players:FindFirstChild(playerName)
     local displayName = targetPlayer and targetPlayer.DisplayName or playerName
+
+    -- SISTEM ADAPTIF WARNA EMBED DISCORD SESUAI GAME FISH IT
+    local embedColor = 9542550 -- Warna ungu default bawaan skrip lama
+    local rType = string.lower(tostring(fishData.Rarity or ""))
+
+    if rType == "secret" then
+        embedColor = 3133391   -- Warna Hijau Kebiruan / Toska khas laser Secret (#2FD5CF)
+    elseif rType == "forgotten" or rType == "eater" then
+        embedColor = 7023307   -- Warna Perak Keunguan Gelap khas tema Forgotten (#6B2BCB)
+    elseif rType == "mythic" then
+        embedColor = 16061440  -- Warna Merah Oranye Terang tipe Mythic (#F51400)
+    elseif rType == "legendary" then
+        embedColor = 16104192  -- Warna Emas Kuning mengkilap tipe Legendary (#F5B000)
+    end
 
     local descriptionText = "Player      : `" .. displayName .. "`\n"
         .. "Caught    : `" .. fishData.Name .. "`\n"
@@ -514,9 +579,14 @@ local function buildEmbedPayload(playerName, fishData)
     local embed = {
         title = "### PLAYER NOTIFICATION",
         description = descriptionText,
-        color = 9542550,
+        color = embedColor, -- Menerapkan perubahan warna adaptif di atas
         footer = { text = "©2026 LFAMILIA • V4" }
     }
+
+    if imageUrl and imageUrl ~= "" then
+        embed.thumbnail = { url = imageUrl }
+    end
+
     return {
         content = "Hey " .. playerMention .. "!!",
         embeds = { embed },
@@ -527,7 +597,8 @@ end
 local function sendFish(playerName, item)
     local data = readFishData(item)
     if not passesFilter(data.Rarity, data.Mutation) then return end
-    local payload = buildEmbedPayload(playerName, data)
+    local imageUrl = getFishImage(item, data.AssetId)
+    local payload = buildEmbedPayload(playerName, data, imageUrl)
     sendRequest(Config.Webhook, payload)
 end
 
@@ -590,8 +661,10 @@ Preview.MouseButton1Click:Connect(function()
         showPage("Webhook")
         return
     end
+    -- Menguji simulasi "Forgotten" agar warna ungu gelap dan gambar umpan terkirim otomatis di preview
     local testData = { Name = "Astralune", Rarity = "Forgotten", Mutation = "Binary", Weight = 1100000 }
-    local payload = buildEmbedPayload(LocalPlayer.Name, testData)
+    local testImageUrl = "https://rbxcdn.com"
+    local payload = buildEmbedPayload(LocalPlayer.Name, testData, testImageUrl)
     local success = sendRequest(Config.Webhook, payload)
     if success then
         Status.Text = "● TEST SENT"
