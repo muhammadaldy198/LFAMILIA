@@ -665,7 +665,7 @@ Preview.MouseButton1Click:Connect(function()
     end
     
     -- GANTI BARIS INI: Dari yang tadinya "https://rbxcdn.com" menjadi penarik ID aset asli
-    local testImageUrl = getRobloxAssetImage("121864768012064") 
+    local testImageUrl = https://discord.com/channels/1442846959865172000/1497996576864473088/1541180161477705729 
     local testData = { Name = "Astralune", Rarity = "Forgotten", Mutation = "Binary", Weight = 1100000 }
     
     local payload = buildEmbedPayload(LocalPlayer.Name, testData, testImageUrl)
