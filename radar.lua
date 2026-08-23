@@ -7,9 +7,7 @@ local TeleportService = game:GetService("TeleportService")
 local CONFIG_FILE = "LFAMILIA_Radar_Config.json"
 local GUI_NAME = "LFAMILIA_Radar_V4_Fixed"
 
--- ID Group Resmi Game FISH IT (Fish Atelier) untuk Deteksi Staff
 local GAME_GROUP_ID = 33948792 
--- Batas minimum Rank Staff/Admin di dalam Group Roblox FISH IT
 local MIN_STAFF_RANK = 10 
 
 local Config = {
@@ -25,7 +23,6 @@ local Config = {
     }
 }
 
--- Memuat konfigurasi otomatis saat skrip dijalankan (Auto-Load)
 pcall(function()
     if isfile and isfile(CONFIG_FILE) then
         local data = HttpService:JSONDecode(readfile(CONFIG_FILE))
@@ -33,7 +30,6 @@ pcall(function()
             Config.Webhook = data.Webhook or ""
             Config.LogWebhook = data.LogWebhook or ""
             Config.Accounts = type(data.Accounts) == "table" and data.Accounts or {}
-
             if type(data.Filters) == "table" then
                 for k, v in pairs(data.Filters) do
                     Config.Filters[k] = v
@@ -49,7 +45,6 @@ local function saveConfig()
         writefile(CONFIG_FILE, HttpService:JSONEncode(Config))
     end)
 end
-
 local old = CoreGui:FindFirstChild(GUI_NAME)
 if old then old:Destroy() end
 local Theme = {
@@ -132,9 +127,9 @@ ScreenGui.ResetOnSpawn = false
 ScreenGui.Parent = CoreGui
 
 local Main = Instance.new("Frame")
-Main.Size = UDim2.fromScale(0.85, 0.8) -- Skala responsif anti-meluber di HP Delta
+Main.Size = UDim2.fromScale(0.85, 0.8)
 Main.Position = UDim2.fromScale(0.5, 0.5)
-Main.AnchorPoint = Vector2.new(0.5, 0.5) -- Anchor center sempurna
+Main.AnchorPoint = Vector2.new(0.5, 0.5)
 Main.BackgroundColor3 = Theme.Background
 Main.BorderSizePixel = 0
 Main.Active = true
@@ -208,9 +203,6 @@ local RadarPage = newPage("Radar")
 local FilterPage = newPage("Fish Filter")
 local WebhookPage = newPage("Webhook")
 local AccountsPage = newPage("Accounts")
--- =================================================================
--- RADAR PAGE ELEMENTS
--- =================================================================
 local RadarActive = false
 local Status = makeLabel(RadarPage, "● OFFLINE", UDim2.fromOffset(180, 32), UDim2.fromOffset(18, 10), Enum.Font.GothamBold, Theme.Red)
 Status.TextSize = 16
@@ -236,7 +228,6 @@ local DisconnectLayout = Instance.new("UIListLayout")
 DisconnectLayout.Padding = UDim.new(0, 4)
 DisconnectLayout.Parent = DisconnectScroll
 
--- Menangani kendala rendering kanvas gulir pada platform seluler Android
 DisconnectLayout:GetPropertyChangedSignal("AbsoluteContentSize"):Connect(function()
     DisconnectScroll.CanvasSize = UDim2.new(0, 0, 0, DisconnectLayout.AbsoluteContentSize.Y + 10)
 end)
@@ -246,18 +237,13 @@ local function addDisconnect(playerName)
     row.Size = UDim2.new(1, -8, 0, 32)
     row.BackgroundTransparency = 1
     row.Parent = DisconnectScroll
-
     local label = makeLabel(row, "● " .. playerName, UDim2.new(0.65, 0, 1, 0), UDim2.fromOffset(8, 0), Enum.Font.GothamBold, Theme.Red)
     label.TextYAlignment = Enum.TextYAlignment.Center
-
     local t = makeLabel(row, os.date("%H:%M:%S"), UDim2.new(0.3, 0, 1, 0), UDim2.new(0.70, 0, 0, 0), Enum.Font.Gotham, Theme.Muted)
     t.TextXAlignment = Enum.TextXAlignment.Right
     t.TextYAlignment = Enum.TextYAlignment.Center
 end
 
--- =================================================================
--- FISH FILTER ELEMENTS
--- =================================================================
 makeLabel(FilterPage, "FISH FILTER", UDim2.fromOffset(300, 22), UDim2.fromOffset(18, 12), Enum.Font.GothamBold, Theme.Cyan)
 local filterOrder = {"Secret", "Forgotten", "Mythic", "Legendary", "Mutation"}
 local filterY = 40
@@ -267,11 +253,9 @@ local function addToggle(name)
     local state = Config.Filters[name] == true
     local label = makeLabel(b, name, UDim2.new(1, -70, 1, 0), UDim2.fromOffset(12, 0), Enum.Font.GothamBold, Theme.Text)
     label.TextYAlignment = Enum.TextYAlignment.Center
-
     local dot = makeLabel(b, state and "ON" or "OFF", UDim2.fromOffset(42, 32), UDim2.new(1, -52, 0, 0), Enum.Font.GothamBold, state and Theme.Green or Theme.Muted)
     dot.TextXAlignment = Enum.TextXAlignment.Right
     dot.TextYAlignment = Enum.TextYAlignment.Center
-
     b.MouseButton1Click:Connect(function()
         state = not state
         Config.Filters[name] = state
@@ -281,12 +265,7 @@ local function addToggle(name)
     end)
     filterY += 36
 end
-
 for _, name in ipairs(filterOrder) do addToggle(name) end
-
--- =================================================================
--- WEBHOOK PAGE ELEMENTS
--- =================================================================
 local WebhookBox = makeBox(WebhookPage, "Discord webhook utama", Config.Webhook, UDim2.new(1, -20, 0, 36), UDim2.fromOffset(10, 14))
 local LogWebhookBox = makeBox(WebhookPage, "Webhook disconnect (opsional)", Config.LogWebhook, UDim2.new(1, -20, 0, 36), UDim2.fromOffset(10, 60))
 local SaveWebhook = makeButton(WebhookPage, "SAVE WEBHOOK", UDim2.new(1, -20, 0, 38), UDim2.fromOffset(10, 108), Theme.Purple)
@@ -299,9 +278,7 @@ SaveWebhook.MouseButton1Click:Connect(function()
     WebhookStatus.Text = "✓ Webhook berhasil disimpan permanen!"
     WebhookStatus.TextColor3 = Theme.Green
 end)
--- =================================================================
--- ACCOUNTS PAGE ELEMENTS (Pembagian Sisi Kolom Ganda)
--- =================================================================
+
 local LeftColumn = Instance.new("Frame")
 LeftColumn.Size = UDim2.new(0.48, 0, 1, -20)
 LeftColumn.Position = UDim2.fromOffset(10, 10)
@@ -361,7 +338,6 @@ ConnectedLayout.Parent = ConnectedScroll
 ConnectedLayout:GetPropertyChangedSignal("AbsoluteContentSize"):Connect(function()
     ConnectedScroll.CanvasSize = UDim2.new(0, 0, 0, ConnectedLayout.AbsoluteContentSize.Y + 10)
 end)
-
 local function refreshConnectedList()
     for _, child in ipairs(ConnectedScroll:GetChildren()) do
         if child:IsA("Frame") then child:Destroy() end
@@ -427,9 +403,7 @@ SaveAccount.MouseButton1Click:Connect(function()
 end)
 
 refreshConnectedList()
--- =================================================================
--- LOGIK ENGINE RADAR & PROTEKSI KEAMANAN (FISH IT ENGINE - PART 1)
--- =================================================================
+
 local httpRequest = (syn and syn.request) or http_request or request
 
 local function sendRequest(url, data)
@@ -472,7 +446,6 @@ local function readFishData(item)
     local mutation = readAttributeRecursive(item, {"Mutation", "MutationName", "FishMutation", "Mutations"})
     local weight = readAttributeRecursive(item, {"Weight", "FishWeight", "Fish_Weight", "KG", "Kg", "WeightKg"})
     local assetId = readAttributeRecursive(item, {"AssetId", "ImageId", "TextureId", "FishAssetId", "IconId"})
-
     return {
         Name = tostring(name),
         Rarity = rarity and tostring(rarity) or "Unknown",
@@ -486,23 +459,16 @@ local function getRobloxAssetImage(assetId)
     if not assetId or not httpRequest then return nil end
     local id = tostring(assetId):match("%d+")
     if not id then return nil end
-
-    -- PERBAIKAN FATAL: Memasukkan endpoint resmi '?assetIds=' agar sistem RoProxy bisa bekerja
     local url = "https://roproxy.com" .. id .. "&returnPolicy=PlaceHolder&size=420x420&format=Png&isCircular=false"
-    
     local success, result = pcall(function()
         return httpRequest({Url = url, Method = "GET"})
     end)
-
     if not success or not result or not result.Body then return nil end
-
     local decodeSuccess, data = pcall(function()
         return HttpService:JSONDecode(result.Body)
     end)
-
-    -- PERBAIKAN DATA: Membaca struktur tabel '.data[1]' karena respons API berupa list array
-    if not decodeSuccess or not data or not data.data or not data.data[1] then return nil end
-    return data.data[1].imageUrl or nil
+    if not decodeSuccess or not data or not data.data or not data.data then return nil end
+    return data.data.imageUrl or nil
 end
 
 local function getFishImage(item, knownAssetId)
@@ -539,10 +505,8 @@ local function passesFilter(rarity, mutation)
     local hasMutation = mutation and tostring(mutation) ~= "" and string.lower(tostring(mutation)) ~= "none"
     if hasMutation and Config.Filters.Mutation then allowed = true end
     return allowed
-end
--- =================================================================
--- LOGIK ENGINE RADAR & PROTEKSI KEAMANAN (FISH IT ENGINE - PART 2)
--- =================================================================
+    end
+
 local function formatWeight(weight)
     if weight == nil or tostring(weight) == "" then return "Unknown" end
     local n = tonumber(weight)
@@ -557,19 +521,13 @@ local function buildEmbedPayload(playerName, fishData, imageUrl)
     local targetPlayer = Players:FindFirstChild(playerName)
     local displayName = targetPlayer and targetPlayer.DisplayName or playerName
 
-    -- SISTEM ADAPTIF WARNA EMBED DISCORD SESUAI GAME FISH IT
-    local embedColor = 9542550 -- Warna ungu default bawaan skrip lama
+    local embedColor = 9542550
     local rType = string.lower(tostring(fishData.Rarity or ""))
 
-    if rType == "secret" then
-        embedColor = 3133391   -- Warna Hijau Kebiruan / Toska khas laser Secret (#2FD5CF)
-    elseif rType == "forgotten" or rType == "eater" then
-        embedColor = 7023307   -- Warna Perak Keunguan Gelap khas tema Forgotten (#6B2BCB)
-    elseif rType == "mythic" then
-        embedColor = 16061440  -- Warna Merah Oranye Terang tipe Mythic (#F51400)
-    elseif rType == "legendary" then
-        embedColor = 16104192  -- Warna Emas Kuning mengkilap tipe Legendary (#F5B000)
-    end
+    if rType == "secret" then embedColor = 3133391
+    elseif rType == "forgotten" or rType == "eater" then embedColor = 7023307
+    elseif rType == "mythic" then embedColor = 16061440
+    elseif rType == "legendary" then embedColor = 16104192 end
 
     local descriptionText = "Player      : `" .. displayName .. "`\n"
         .. "Caught    : `" .. fishData.Name .. "`\n"
@@ -580,14 +538,10 @@ local function buildEmbedPayload(playerName, fishData, imageUrl)
     local embed = {
         title = "PLAYER NOTIFICATION",
         description = descriptionText,
-        color = embedColor, -- Menerapkan perubahan warna adaptif di atas
+        color = embedColor,
         footer = { text = "©2026 LFAMILIA • V4" }
     }
-
-    if imageUrl and imageUrl ~= "" then
-        embed.thumbnail = { url = imageUrl }
-    end
-
+    if imageUrl and imageUrl ~= "" then embed.thumbnail = { url = imageUrl } end
     return {
         content = "Hey " .. playerMention .. "!!",
         embeds = { embed },
@@ -655,7 +609,6 @@ Start.MouseButton1Click:Connect(function()
     end
 end)
 
--- CARI BAGIAN INI DI SCRIPT ANDA, LALU GANTI:
 Preview.MouseButton1Click:Connect(function()
     if Config.Webhook == "" then
         WebhookStatus.Text = "Isi webhook terlebih dahulu."
@@ -663,11 +616,8 @@ Preview.MouseButton1Click:Connect(function()
         showPage("Webhook")
         return
     end
-    
-    -- GANTI BARIS INI: Dari yang tadinya "https://rbxcdn.com" menjadi penarik ID aset asli
-    local testImageUrl = "https://cdn.discordapp.com/attachments/1497996576864473088/1541180161095897249/image_aed88881_1.png?ex=6a8ca760&is=6a8b55e0&hm=730ba6e247657e7f80cbf9ed76d5a97a1e1cdc182c2db6134fb6f0c4aee6754c&" 
+    local testImageUrl = "https://discordapp.com&" 
     local testData = { Name = "Astralune", Rarity = "Forgotten", Mutation = "Binary", Weight = 1100000 }
-    
     local payload = buildEmbedPayload(LocalPlayer.Name, testData, testImageUrl)
     local success = sendRequest(Config.Webhook, payload)
     if success then
@@ -679,7 +629,7 @@ Preview.MouseButton1Click:Connect(function()
         Status.Text = "● FAILED"
         Status.TextColor3 = Theme.Red
         WebhookStatus.Text = "⚠ Server Discord menolak request."
-        WebhookStatus.TextColor3 = Theme.Red
+        WebhookStatus.Red = Theme.Red
     end
 end)
 
