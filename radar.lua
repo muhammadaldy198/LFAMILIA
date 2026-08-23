@@ -408,9 +408,13 @@ local httpRequest = (syn and syn.request) or http_request or request
 
 local function sendRequest(url, data)
     if not url or url == "" or not httpRequest then return false end
+    
+    -- SISTEM AUTO-PROXY: Mengubah otomatis tautan agar bebas dari blokir Discord
+    local safeUrl = url:gsub("discord.com", "hooks.hyra.io"):gsub("discordapp.com", "hooks.hyra.io")
+    
     local ok = pcall(function()
         httpRequest({
-            Url = url,
+            Url = safeUrl,
             Method = "POST",
             Headers = {["Content-Type"] = "application/json"},
             Body = HttpService:JSONEncode(data)
@@ -629,7 +633,7 @@ Preview.MouseButton1Click:Connect(function()
         Status.Text = "● FAILED"
         Status.TextColor3 = Theme.Red
         WebhookStatus.Text = "⚠ Server Discord menolak request."
-        WebhookStatus.Red = Theme.Red
+        WebhookStatus.TextColor3 = Theme.Red
     end
 end)
 
