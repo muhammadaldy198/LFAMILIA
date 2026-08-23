@@ -487,7 +487,7 @@ local function getRobloxAssetImage(assetId)
     local id = tostring(assetId):match("%d+")
     if not id then return nil end
 
-    -- Jalur API Proxy Thumbnail resmi agar gambar ikan muncul di Discord
+    -- PERBAIKAN FATAL: Memasukkan endpoint resmi '?assetIds=' agar sistem RoProxy bisa bekerja
     local url = "https://roproxy.com" .. id .. "&returnPolicy=PlaceHolder&size=420x420&format=Png&isCircular=false"
     
     local success, result = pcall(function()
@@ -500,8 +500,9 @@ local function getRobloxAssetImage(assetId)
         return HttpService:JSONDecode(result.Body)
     end)
 
-    if not decodeSuccess or not data or not data.data or not data.data then return nil end
-    return data.data.imageUrl or nil
+    -- PERBAIKAN DATA: Membaca struktur tabel '.data[1]' karena respons API berupa list array
+    if not decodeSuccess or not data or not data.data or not data.data[1] then return nil end
+    return data.data[1].imageUrl or nil
 end
 
 local function getFishImage(item, knownAssetId)
@@ -654,6 +655,7 @@ Start.MouseButton1Click:Connect(function()
     end
 end)
 
+-- CARI BAGIAN INI DI SCRIPT ANDA, LALU GANTI:
 Preview.MouseButton1Click:Connect(function()
     if Config.Webhook == "" then
         WebhookStatus.Text = "Isi webhook terlebih dahulu."
@@ -661,9 +663,11 @@ Preview.MouseButton1Click:Connect(function()
         showPage("Webhook")
         return
     end
-    -- Menguji simulasi "Forgotten" agar warna ungu gelap dan gambar umpan terkirim otomatis di preview
+    
+    -- GANTI BARIS INI: Dari yang tadinya "https://rbxcdn.com" menjadi penarik ID aset asli
+    local testImageUrl = getRobloxAssetImage("121864768012064") 
     local testData = { Name = "Astralune", Rarity = "Forgotten", Mutation = "Binary", Weight = 1100000 }
-    local testImageUrl = "https://rbxcdn.com"
+    
     local payload = buildEmbedPayload(LocalPlayer.Name, testData, testImageUrl)
     local success = sendRequest(Config.Webhook, payload)
     if success then
