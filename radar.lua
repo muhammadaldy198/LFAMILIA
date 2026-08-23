@@ -959,6 +959,56 @@ local function readFishData(item)
     }
 end
 
+local function getRobloxAssetImage(assetId)
+    if not assetId or not httpRequest then
+        return nil
+    end
+
+    local id =
+        tostring(assetId):match("%d+")
+
+    if not id then
+        return nil
+    end
+
+    local url =
+        "https://thumbnails.roblox.com/v1/assets"
+        .. "?assetIds=" .. id
+        .. "&returnPolicy=PlaceHolder"
+        .. "&size=420x420"
+        .. "&format=Png"
+        .. "&isCircular=false"
+
+    local ok, result = pcall(function()
+        return httpRequest({
+            Url = url,
+            Method = "GET"
+        })
+    end)
+
+    if not ok
+        or not result
+        or not result.Body then
+        return nil
+    end
+
+    local success, data =
+        pcall(function()
+            return HttpService:JSONDecode(
+                result.Body
+            )
+        end)
+
+    if not success
+        or not data
+        or not data.data
+        or not data.data[1] then
+        return nil
+    end
+
+    return data.data[1].imageUrl
+end
+
 local function getFishImage(
     item,
     knownAssetId
@@ -984,7 +1034,6 @@ local function getFishImage(
         pcall(function()
             if item:IsA("Tool")
                 and item.TextureId ~= "" then
-
                 assetId =
                     item.TextureId
             end
@@ -995,14 +1044,12 @@ local function getFishImage(
         for _, obj in ipairs(
             item:GetDescendants()
         ) do
-
             if obj:IsA("Texture")
                 or obj:IsA("Decal") then
 
                 if obj.Texture ~= "" then
                     assetId =
                         obj.Texture
-
                     break
                 end
 
@@ -1011,7 +1058,6 @@ local function getFishImage(
                 if obj.TextureId ~= "" then
                     assetId =
                         obj.TextureId
-
                     break
                 end
 
@@ -1020,32 +1066,15 @@ local function getFishImage(
                 if obj.TextureID ~= "" then
                     assetId =
                         obj.TextureID
-
                     break
                 end
             end
         end
     end
 
-    if not assetId then
-        return nil
-    end
-
-    local id =
-        tostring(assetId):match(
-            "%d+"
-        )
-
-    if not id then
-        return nil
-    end
-
-    return
-        "https://www.roblox.com/asset-thumbnail/image"
-        .. "?assetId=" .. id
-        .. "&width=420"
-        .. "&height=420"
-        .. "&format=png"
+    return getRobloxAssetImage(
+        assetId
+    )
 end
 local function passesFilter(
     rarity,
@@ -1130,7 +1159,7 @@ local function formatWeight(weight)
     )
 end
 
-local function buildEmbed(
+local function buildComponents(
     playerName,
     fishData,
     imageUrl
@@ -1138,53 +1167,91 @@ local function buildEmbed(
     local playerMention =
         mentionFor(playerName)
 
-    local description =
-        "────────────────────────\n"
-        .. "Hey "
-        .. playerMention
+    local text =
+        "Hey " .. playerMention
         .. "\n"
-        .. "`Player`   : "
+        .. "**Player**   : "
         .. playerName
         .. "\n"
-        .. "`Fish`     : "
+        .. "**Fish**     : "
         .. fishData.Name
         .. "\n"
-        .. "`Rarity`   : "
+        .. "**Rarity**   : "
         .. fishData.Rarity
         .. "\n"
-        .. "`Mutation` : "
+        .. "**Mutation** : "
         .. fishData.Mutation
         .. "\n"
-        .. "`Weight`   : "
+        .. "**Weight**   : "
         .. formatWeight(
             fishData.Weight
         )
-        .. "\n"
-        .. "────────────────────────"
 
-    local embed = {
-        title =
-            "### "
-            .. playerName
-            .. "\n### **NOTIFICATION**",
+    local section = {
+        type = 9,
 
-        color = 9542550,
+        components = {
+            {
+                type = 10,
 
-        description = description,
-
-        footer = {
-            text =
-                "©2026 LFAMILIA • V1"
+                content = text
+            }
         }
     }
 
     if imageUrl then
-        embed.image = {
-            url = imageUrl
+        section.accessory = {
+            type = 11,
+
+            media = {
+                url = imageUrl
+            },
+
+            description =
+                fishData.Name
         }
     end
 
-    return embed
+    return {
+        {
+            type = 17,
+
+            accent_color = 9542550,
+
+            components = {
+                {
+                    type = 10,
+
+                    content =
+                        "**PLAYER**\n"
+                        .. "**NOTIFICATION**"
+                },
+
+                {
+                    type = 14,
+
+                    divider = true,
+                    spacing = 1
+                },
+
+                section,
+
+                {
+                    type = 14,
+
+                    divider = true,
+                    spacing = 1
+                },
+
+                {
+                    type = 10,
+
+                    content =
+                        "©2026 LFAMILIA • V1"
+                }
+            }
+        }
+    }
 end
 
 local function sendFish(
@@ -1198,7 +1265,6 @@ local function sendFish(
         data.Rarity,
         data.Mutation
     ) then
-
         return
     end
 
@@ -1208,18 +1274,23 @@ local function sendFish(
             data.AssetId
         )
 
-    local embed =
-        buildEmbed(
-            playerName,
-            data,
-            imageUrl
-        )
-
     sendRequest(
         Config.Webhook,
         {
             username = "LFAMILIA",
-            embeds = {embed}
+
+            flags = 32768,
+
+            components =
+                buildComponents(
+                    playerName,
+                    data,
+                    imageUrl
+                ),
+
+            allowed_mentions = {
+                parse = {"users"}
+            }
         }
     )
 end
@@ -1367,8 +1438,8 @@ Preview.MouseButton1Click:Connect(
             Weight = 250000
         }
 
-        local embed =
-            buildEmbed(
+        local components =
+            buildComponents(
                 LocalPlayer.Name,
                 testData,
                 nil
@@ -1378,7 +1449,15 @@ Preview.MouseButton1Click:Connect(
             Config.Webhook,
             {
                 username = "LFAMILIA",
-                embeds = {embed}
+
+                flags = 32768,
+
+                components =
+                    components,
+
+                allowed_mentions = {
+                    parse = {"users"}
+                }
             }
         )
 
