@@ -12,9 +12,9 @@ local LocalPlayer = Players.LocalPlayer
 
 local CONFIG = {
     WEBHOOK_URL = "",
-    FISH_DB_URL = "https://githubusercontent.com",
-    RARITY_DB_URL = "https://githubusercontent.com",
-    VARIANT_DB_URL = "https://githubusercontent.com",
+    FISH_DB_URL = "https://raw.githubusercontent.com/muhammadaldy198/LFAMILIA/refs/heads/main/FishDatabase.lua",
+    RARITY_DB_URL = "https://raw.githubusercontent.com/muhammadaldy198/LFAMILIA/refs/heads/main/RarityDatabase.lua",
+    VARIANT_DB_URL = "https://raw.githubusercontent.com/muhammadaldy198/LFAMILIA/refs/heads/main/VariantDatabase.lua",
     ALLOW_RARITY = {
         SECRET = true, FORGOTTEN = true, Mythic = true,
         Legendary = false, Epic = false, Rare = false,
@@ -118,16 +118,33 @@ end
 local function parseCatch(message)
     message = trim(message)
     if message == "" then return nil end
-    local player, fish, weight, chance = message:match("([%w_]+) obtained a (.+) %(([%d%.]+)kg%) with a 1 in (.+) chance!")
+    
+    -- POLA PERBAIKAN: Mendukung penulisan berat dengan huruf K (contoh: 4.53K) dan mengabaikan sisa teks di akhir
+    local player, fish, weightStr, chance = message:match("([%w_]+)%s+obtained%s+a%s+(.-)%s+%(([%d%.%a]+)%s*kg%)%s+with%s+a%s+1%s+in%s+([%d%.,%s%a!]+)")
+    
     if not player then
-        player, fish, weight, chance = message:match("(.+) obtained a (.+) %(([%d%.]+)kg%) with a 1 in ([%d%.,%s%a]+) chance!")
+        player, fish, weightStr, chance = message:match("(.+)%s+obtained%s+a%s+(.-)%s+%(([%d%.%a]+)%s*kg%)%s+with%s+a%s+1%s+in%s+([%d%.,%s%a!]+)")
     end
+    
     if player and fish then
+        -- Bersihkan teks chance dari kata 'chance!' jika terbawa
+        local cleanChance = trim(chance):gsub(" chance!", ""):gsub("!", "")
+        
+        -- Konversi satuan K jika berat ikan mencapai ribuan kilo (misal 4.53K -> 4530)
+        local rawWeight = 0
+        local numericPart, kIndicator = weightStr:upper():match("([%d%.]+)([K]?)")
+        if numericPart then
+            rawWeight = tonumber(numericPart) or 0
+            if kIndicator == "K" then
+                rawWeight = rawWeight * 1000
+            end
+        end
+
         return {
             Player = trim(player),
             Fish = trim(fish),
-            Weight = tonumber(weight) or 0,
-            Chance = trim(chance):gsub(" chance!", ""),
+            Weight = rawWeight,
+            Chance = cleanChance,
         }
     end
     return nil
