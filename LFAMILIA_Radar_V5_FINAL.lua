@@ -308,7 +308,7 @@ local function sendWebhook(data)
         })
     end)
 
-    if ok then state.Sent + 1 end
+    if ok then state.Sent = state.Sent + 1 end
     return ok
 end
 
@@ -710,7 +710,7 @@ UIS.InputEnded:Connect(function(input)
 end)
 
 local function updateUI(data, fishData, rarity, variant)
-    state.Detected + 1
+    state.Detected = state.Detected + 1
     state.Last = data
     local r = rarity and rarity.Name or "Unknown"
     local v = variant and variant.Name or ""
