@@ -17,7 +17,7 @@ local CONFIG = {
     VARIANT_DB_URL = "https://raw.githubusercontent.com/muhammadaldy198/LFAMILIA/refs/heads/main/VariantDatabase.lua",
     ALLOW_RARITY = {
         SECRET = true, FORGOTTEN = true, Mythic = true,
-        Legendary = false, Epic = false, Rare = false,
+        Legendary = true, Epic = false, Rare = false,
         Uncommon = false, Common = false,
     },
     MIN_WEIGHT = 0,
@@ -595,7 +595,19 @@ local function handleMessage(text)
     sendWebhook(data)
 end
 
-if TextChatService.MessageReceived then TextChatService.MessageReceived:Connect(function(msg) if msg and msg.Text then handleMessage(msg.Text) end end) end
+-- PERBAIKAN: Menggunakan OnIncomingMessage agar mendeteksi Chat Sistem/Notifikasi Game Baru
+if TextChatService then
+    TextChatService.OnIncomingMessage = function(message)
+        if message and message.Text and message.Text ~= "" then
+            -- Jalankan fungsi pembaca dan pengirim webhook
+            handleMessage(message.Text)
+        end
+    end
+else
+    -- Cadangan jika game mendadak berganti ke sistem lama
+    for _, p in pairs(Players:GetPlayers()) do p.Chatted:Connect(handleMessage) end
+    Players.PlayerAdded:Connect(function(p) p.Chatted:Connect(handleMessage) end)
+end
 
 -- EVENT DETEKSI PLAYER MASUK/KELUAR SERVER (CONNECT/RECONNECT LOGS)
 Players.PlayerAdded:Connect(function(player)
