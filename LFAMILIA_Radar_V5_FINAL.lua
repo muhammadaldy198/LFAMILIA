@@ -281,9 +281,7 @@ local function sendWebhook(data)
         inline = false
     }
 
-    local payload = {
-        username = CONFIG.WEBHOOK_USERNAME,
-        local mappedDiscord = nil
+    local mappedDiscord = nil
     for roblox, discordId in pairs(mappings or {}) do
         if tostring(roblox):lower() == tostring(data.Player):lower() then
             mappedDiscord = discordId
@@ -310,7 +308,7 @@ local function sendWebhook(data)
         })
     end)
 
-    if ok then state.Sent += 1 end
+    if ok then state.Sent + 1 end
     return ok
 end
 
@@ -569,7 +567,7 @@ testWebhook.Activated:Connect(function()
             Body = HttpService:JSONEncode({
                 username = CONFIG.WEBHOOK_USERNAME,
                 embeds = {{
-                    title = "✦ LFAMILIA RADAR",
+                    title = "LFAMILIA RADAR",
                     description = "Webhook test berhasil.",
                     color = 0x5865F2,
                     footer = {text="LFAMILIA Radar V5 • Fish It"}
@@ -712,7 +710,7 @@ UIS.InputEnded:Connect(function(input)
 end)
 
 local function updateUI(data, fishData, rarity, variant)
-    state.Detected += 1
+    state.Detected + 1
     state.Last = data
     local r = rarity and rarity.Name or "Unknown"
     local v = variant and variant.Name or ""
