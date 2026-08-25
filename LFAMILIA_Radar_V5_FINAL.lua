@@ -1,6 +1,6 @@
 --[[
-LFAMILIA RADAR V5 - DELTA EDITION
-+ Auto-Load & Auto-Save (JSON)
+LFAMILIA RADAR V5 - DELTA ANDROID EDITION
+[BAGIAN 1 DARI 10]
 ]]
 
 local Players = game:GetService("Players")
@@ -12,23 +12,23 @@ local LocalPlayer = Players.LocalPlayer
 
 local CONFIG = {
     WEBHOOK_URL = "",
-    FISH_DB_URL = "https://raw.githubusercontent.com/muhammadaldy198/LFAMILIA/refs/heads/main/FishDatabase.lua",
-    RARITY_DB_URL = "https://raw.githubusercontent.com/muhammadaldy198/LFAMILIA/refs/heads/main/RarityDatabase.lua",
-    VARIANT_DB_URL = "https://raw.githubusercontent.com/muhammadaldy198/LFAMILIA/refs/heads/main/VariantDatabase.lua",
+    FISH_DB_URL = "https://githubusercontent.com",
+    RARITY_DB_URL = "https://githubusercontent.com",
+    VARIANT_DB_URL = "https://githubusercontent.com",
     ALLOW_RARITY = {
         SECRET = true, FORGOTTEN = true, Mythic = true,
-        Legendary = false, Epic = false, Rare = false,
+        Legendary = true, Epic = false, Rare = false,
         Uncommon = false, Common = false,
     },
     MIN_WEIGHT = 0,
     MENTION = "",
-    WEBHOOK_USERNAME = "LFAMILIA Radar",
+    WEBHOOK_USERNAME = "LFAMILIA Radar (Fish It)",
 }
 
 local mappings = {}
 local state = { Running = true, Detected = 0, Sent = 0, Last = nil, Seen = {} }
 local CONFIG_FILE = "LFAMILIA_Radar_Save.json"
-
+--[[ [BAGIAN 2 DARI 10] ]]
 local function getWriteFn() return writefile or (syn and syn.writefile) end
 local function getReadFn()  return readfile  or (syn and syn.readfile)  end
 
@@ -73,7 +73,7 @@ local function loadConfig()
 end
 
 loadConfig()
-
+--[[ [BAGIAN 3 DARI 10] ]]
 local function fetchLua(url)
     if not url or url == "" then return {} end
     local ok, result = pcall(function()
@@ -86,42 +86,45 @@ end
 local FishDatabase = fetchLua(CONFIG.FISH_DB_URL)
 local RarityDatabase = fetchLua(CONFIG.RARITY_DB_URL)
 local VariantDatabase = fetchLua(CONFIG.VARIANT_DB_URL)
+
 local function requestFn()
-    return request or http_request or (syn and syn.request)
+    return request or http_request or (syn and syn.request) or (fluxus and fluxus.request)
 end
 
 local function trim(s)
     return tostring(s or ""):gsub("^%s*(.-)%s*$", "%1")
 end
 
-local function firstRGB(colors)
-    local c = colors and colors[1]
-    if type(c) == "table" then
-        return tonumber(c[1]) or 255, tonumber(c[2]) or 255, tonumber(c[3]) or 255
-    end
-    return 255, 255, 255
-end
-
 local function rgbInt(colors)
-    local r,g,b = firstRGB(colors)
-    return r * 65536 + g * 256 + b
+    local c = colors and colors
+    if type(c) == "table" then
+        local r, g, b = tonumber(c[1]) or 255, tonumber(c[2]) or 255, tonumber(c[3]) or 255
+        return r * 65536 + g * 256 + b
+    end
+    return 0xFFFFFF
 end
-
+--[[ [BAGIAN 4 DARI 10] ]]
 local function parseCatch(message)
     message = trim(message)
     if message == "" then return nil end
-    local player, fish, weight, chance =
-        message:match("(.+) obtained a (.+) %(([%d%.]+)kg%) with a 1 in (.+) chance!")
+    
+    local player, fish, weight, chance = message:match("([%w_]+) obtained a (.+) %(([%d%.]+)kg%) with a 1 in (.+) chance!")
+    
+    if not player then
+        player, fish, weight, chance = message:match("(.+) obtained a (.+) %(([%d%.]+)kg%) with a 1 in ([%d%.,%s%a]+) chance!")
+    end
+    
     if player and fish then
         return {
             Player = trim(player),
             Fish = trim(fish),
             Weight = tonumber(weight) or 0,
-            Chance = trim(chance),
+            Chance = trim(chance):gsub(" chance!", ""),
         }
     end
     return nil
 end
+
 local function resolveFish(name)
     local direct = FishDatabase[name]
     if direct then return direct, name end
@@ -136,7 +139,7 @@ local function resolveFish(name)
         end
     end
 end
-
+--[[ [BAGIAN 5 DARI 10] ]]
 local function resolveVariant(name)
     for _,v in pairs(VariantDatabase) do
         if type(v) == "table" and v.Name and v.Name:lower() == tostring(name):lower() then
@@ -147,9 +150,7 @@ end
 
 local function resolveRarity(fishData)
     if not fishData then return nil end
-    if tonumber(fishData.Tier) then
-        return RarityDatabase[tonumber(fishData.Tier)]
-    end
+    if tonumber(fishData.Tier) then return RarityDatabase[tonumber(fishData.Tier)] end
     if fishData.Rarity then
         for _,tier in pairs(RarityDatabase) do
             if type(tier) == "table" and tostring(tier.Name):lower() == tostring(fishData.Rarity):lower() then
@@ -163,88 +164,45 @@ local function seenRecently(key)
     local now = os.clock()
     local old = state.Seen[key]
     state.Seen[key] = now
-    return old and (now - old) < 8
+    return old and (now - old) < 5
 end
 
-local function thumbnail(assetId)
-    local id = tostring(assetId or ""):match("%d+")
-    if not id then return nil end
-    local url = "https://thumbnails.roblox.com/v1/assets?assetIds=" .. id .. "&size=420x420&format=Png&isCircular=false"
-    local ok, response = pcall(function() return game:HttpGet(url) end)
-    if not ok then return nil end
-    local success, data = pcall(function() return HttpService:JSONDecode(response) end)
-    if not success then return nil end
-    local item = data.data and data.data[1]
-    if item and item.imageUrl then return item.imageUrl end
-    return nil
-end
 local function sendWebhook(data)
     if CONFIG.WEBHOOK_URL == "" then return false end
     local req = requestFn()
     if not req then return false end
 
     local fishData, fishName, detectedVariant = resolveFish(data.Fish)
-    if not fishData then return false end
+    local rarity = fishData and resolveRarity(fishData)
+    local rarityName = rarity and rarity.Name or (fishData and tostring(fishData.Rarity) or "Unknown")
 
-    local rarity = resolveRarity(fishData)
-    local rarityName = rarity and rarity.Name or tostring(fishData.Rarity or "Unknown")
-
-    if not CONFIG.ALLOW_RARITY[rarityName] and not CONFIG.ALLOW_RARITY[string.upper(rarityName or "")] then
+    if not CONFIG.ALLOW_RARITY[rarityName] and not CONFIG.ALLOW_RARITY[string.upper(rarityName)] then
         return false
     end
     if data.Weight < CONFIG.MIN_WEIGHT then return false end
 
-    local variant = data.Variant and resolveVariant(data.Variant) or detectedVariant
-    local variantName = variant and variant.Name or data.Variant
-
-    local key = table.concat({
-        data.Player or "", fishName or data.Fish or "",
-        variantName or "", tostring(data.Weight or ""),
-        data.Chance or "", game.JobId or ""
-    }, "|")
+    local key = data.Player .. "|" .. data.Fish .. "|" .. tostring(data.Weight)
     if seenRecently(key) then return false end
-      local embed = {
-        title = "✦ " .. string.upper(rarityName) .. " CATCH",
-        description = "**" .. tostring(fishName or data.Fish) .. "**" ..
-            (variantName and ("\n`" .. tostring(variantName) .. "`") or ""),
-        color = rarity and rgbInt(rarity.Colors) or 0xFFFFFF,
+
+    local embed = {
+        title = "🎣 GLOBAL SERVER CATCH",
+        description = "**" .. data.Player .. "** caught a **" .. data.Fish .. "**!",
+        color = rarity and rgbInt(rarity.Colors) or 0x00FFAC,
         fields = {
-            { name = "👤 Player", value = tostring(data.Player), inline = true },
+            { name = "👤 Player", value = "`" .. data.Player .. "`", inline = true },
+            { name = "🐟 Fish", value = tostring(data.Fish), inline = true },
             { name = "⚖ Weight", value = string.format("%.2f kg", data.Weight), inline = true },
             { name = "🎲 Chance", value = "1 in " .. tostring(data.Chance), inline = true },
-            { name = "⭐ Rarity", value = tostring(rarityName), inline = true },
         },
-        footer = { text = "LFAMILIA Radar V5 • Fish It" },
+        footer = { text = "LFAMILIA Radar V5 • Delta Android" },
         timestamp = os.date("!%Y-%m-%dT%H:%M:%SZ"),
     }
-    if variantName then
-        embed.fields[#embed.fields + 1] = { name = "◆ Variant", value = tostring(variantName), inline = true }
-    end
-    local image = thumbnail(fishData.AssetId)
-    if image then embed.image = { url = image } end
-    embed.fields[#embed.fields + 1] = {
-        name = "🌐 Server",
-        value = "`" .. tostring(game.JobId):sub(1, 18) .. "...`",
-        inline = false
-    }
 
-    local mappedDiscord = nil
-    for roblox, discordId in pairs(mappings) do
-        if tostring(roblox):lower() == tostring(data.Player):lower() then
-            mappedDiscord = discordId
-            break
-        end
-    end
+    local mappedDiscord = mappings[data.Player] or mappings[data.Player:lower()]
     local content = CONFIG.MENTION or ""
-    if mappedDiscord and mappedDiscord ~= "" then
-        content = (content ~= "" and (content .. " ") or "") .. "<@" .. tostring(mappedDiscord) .. ">"
-    end
+    if mappedDiscord then content = content .. " <@" .. tostring(mappedDiscord) .. ">" end
 
-    local payload = {
-        username = CONFIG.WEBHOOK_USERNAME,
-        content = content,
-        embeds = {embed},
-    }
+    local payload = { username = CONFIG.WEBHOOK_USERNAME, content = trim(content), embeds = {embed} }
 
     local ok = pcall(function()
         req({
@@ -254,12 +212,10 @@ local function sendWebhook(data)
             Body = HttpService:JSONEncode(payload),
         })
     end)
-    if ok then
-        state.Sent = state.Sent + 1
-        return true
-    end
+    if ok then state.Sent = state.Sent + 1 return true end
     return false
 end
+--[[ [BAGIAN 6 DARI 10] ]]
 local gui = Instance.new("ScreenGui")
 gui.Name = "LFAMILIA_Radar_V5"
 gui.ResetOnSpawn = false
@@ -268,65 +224,61 @@ pcall(function() gui.Parent = CoreGui end)
 if not gui.Parent then gui.Parent = LocalPlayer:WaitForChild("PlayerGui") end
 
 local main = Instance.new("Frame")
-local viewport = workspace.CurrentCamera.ViewportSize
-local w, h = viewport.X, viewport.Y
-main.Size = UDim2.new(0, w * 0.85, 0, h * 0.75)   -- 85% lebar, 75% tinggi
-main.Position = UDim2.new(0.5, -w*0.425, 0.5, -h*0.375)  -- tengah
+main.Size = UDim2.new(0, 340, 0, 320)
+main.Position = UDim2.new(0.5, -170, 0.4, -160)
 main.BackgroundColor3 = Color3.fromRGB(15,16,21)
 main.BorderSizePixel = 0
 main.Parent = gui
-Instance.new("UICorner", main).CornerRadius = UDim.new(0, 14)
+Instance.new("UICorner", main).CornerRadius = UDim.new(0, 10)
 local outline = Instance.new("UIStroke", main)
 outline.Color = Color3.fromRGB(65,68,80)
-outline.Transparency = 0.25
 
 local header = Instance.new("TextButton")
-header.Size = UDim2.new(1, -50, 0, 50)
+header.Size = UDim2.new(1, -40, 0, 40)
 header.BackgroundTransparency = 1
-header.Text = "✦  LFAMILIA RADAR"
+header.Text = "✦  LFAMILIA RADAR (ANDROID)"
 header.TextColor3 = Color3.fromRGB(245,245,248)
-header.TextSize = 15
+header.TextSize = 13
 header.Font = Enum.Font.GothamBold
 header.TextXAlignment = Enum.TextXAlignment.Left
-header.AutoButtonColor = false
 header.Parent = main
 local hp = Instance.new("UIPadding", header)
-hp.PaddingLeft = UDim.new(0, 14)
+hp.PaddingLeft = UDim.new(0, 10)
 
 local min = Instance.new("TextButton")
-min.Size = UDim2.fromOffset(44, 44)
-min.Position = UDim2.new(1, -48, 0, 3)
+min.Size = UDim2.fromOffset(35, 35)
+min.Position = UDim2.new(1, -38, 0, 3)
 min.BackgroundTransparency = 1
 min.Text = "−"
-min.TextSize = 22
+min.TextSize = 18
 min.TextColor3 = Color3.fromRGB(220,220,228)
 min.Parent = main
 
 local tabbar = Instance.new("Frame")
-tabbar.Position = UDim2.new(0, 8, 1, -50)
-tabbar.Size = UDim2.new(1, -16, 0, 42)
+tabbar.Position = UDim2.new(0, 6, 1, -40)
+tabbar.Size = UDim2.new(1, -12, 0, 34)
 tabbar.BackgroundColor3 = Color3.fromRGB(22,24,31)
 tabbar.Parent = main
-Instance.new("UICorner", tabbar).CornerRadius = UDim.new(0, 10)
-
+Instance.new("UICorner", tabbar).CornerRadius = UDim.new(0, 6)
+--[[ [BAGIAN 7 DARI 10] ]]
 local pages = {}
 local tabs = {}
 local activeTab = "Home"
+
 local function makePage(name)
     local page = Instance.new("ScrollingFrame")
     page.Name = name
-    page.Position = UDim2.new(0, 8, 0, 56)
-    page.Size = UDim2.new(1, -16, 1, -110)
+    page.Position = UDim2.new(0, 6, 0, 45)
+    page.Size = UDim2.new(1, -12, 1, -90)
     page.BackgroundTransparency = 1
     page.BorderSizePixel = 0
-    page.ScrollBarThickness = 3
+    page.ScrollBarThickness = 2
     page.AutomaticCanvasSize = Enum.AutomaticSize.Y
     page.CanvasSize = UDim2.new()
     page.Visible = false
     page.Parent = main
     local layout = Instance.new("UIListLayout", page)
-    layout.Padding = UDim.new(0, 6)
-    layout.SortOrder = Enum.SortOrder.LayoutOrder
+    layout.Padding = UDim.new(0, 5)
     pages[name] = page
     return page
 end
@@ -337,18 +289,18 @@ local function card(parent, height)
     f.BackgroundColor3 = Color3.fromRGB(23,25,32)
     f.BorderSizePixel = 0
     f.Parent = parent
-    Instance.new("UICorner", f).CornerRadius = UDim.new(0, 10)
+    Instance.new("UICorner", f).CornerRadius = UDim.new(0, 6)
     return f
 end
 
 local function text(parent, value, y, size, color, bold)
     local t = Instance.new("TextLabel")
-    t.Position = UDim2.fromOffset(12, y or 10)
-    t.Size = UDim2.new(1, -24, 0, 28)
+    t.Position = UDim2.new(0, 8, 0, y or 6)
+    t.Size = UDim2.new(1, -16, 0, 22)
     t.BackgroundTransparency = 1
     t.Text = value
     t.TextColor3 = color or Color3.fromRGB(220,221,228)
-    t.TextSize = size or 13
+    t.TextSize = size or 11
     t.Font = bold and Enum.Font.GothamBold or Enum.Font.Gotham
     t.TextXAlignment = Enum.TextXAlignment.Left
     t.TextWrapped = true
@@ -356,86 +308,36 @@ local function text(parent, value, y, size, color, bold)
     return t
 end
 
--- HOME
+-- PANEL HOME
 local home = makePage("Home")
-local homeStatus = card(home, 70)
-text(homeStatus, "●  MONITOR ACTIVE", 8, 14, Color3.fromRGB(95,225,145), true)
-local homeStats = text(homeStatus, "Players 0   •   Detected 0   •   Sent 0", 36, 12, Color3.fromRGB(185,188,200))
+local homeStatus = card(home, 55)
+text(homeStatus, "●  MONITOR ACTIVE", 4, 12, Color3.fromRGB(95,225,145), true)
+local homeStats = text(homeStatus, "Players 0  •  Detected 0  •  Sent 0", 26, 11, Color3.fromRGB(185,188,200))
 
-local homeLast = card(home, 130)
-local homeLastText = text(homeLast, "LAST CATCH\n\nNo catch detected yet.", 8, 13, Color3.fromRGB(230,231,236), false)
-homeLastText.Size = UDim2.new(1, -24, 1, -16)
-homeLastText.TextYAlignment = Enum.TextYAlignment.Top
-
-local homeWebhook = card(home, 60)
-text(homeWebhook, "WEBHOOK", 8, 11, Color3.fromRGB(150,154,170), true)
-local homeWebhookStatus = text(homeWebhook, "● Not configured", 32, 12, Color3.fromRGB(230,190,95), false)
-
--- PLAYERS
-local playersPage = makePage("Players")
-local playerInfo = card(playersPage, 56)
-local playerInfoText = text(playerInfo, "PLAYER MAPPING\nMap Roblox → Discord ID", 6, 12, Color3.fromRGB(190,193,204), false)
-playerInfoText.Size = UDim2.new(1, -24, 1, -12)
-
-local mappingBox = card(playersPage, 200)
-text(mappingBox, "DISCORD MAPPINGS", 8, 11, Color3.fromRGB(150,154,170), true)
-local mappingText = text(mappingBox, "No mappings added yet.", 36, 12, Color3.fromRGB(215,216,224), false)
-mappingText.Size = UDim2.new(1, -24, 1, -48)
-
-local addMapping = Instance.new("TextButton")
-addMapping.Size = UDim2.new(0.48, -8, 0, 36)
-addMapping.Position = UDim2.new(0, 12, 1, -44)
-addMapping.Text = "+ ADD"
-addMapping.TextSize = 12
-addMapping.Font = Enum.Font.GothamBold
-addMapping.TextColor3 = Color3.fromRGB(235,237,242)
-addMapping.BackgroundColor3 = Color3.fromRGB(45,48,60)
-addMapping.Parent = mappingBox
-Instance.new("UICorner", addMapping).CornerRadius = UDim.new(0, 8)
-
-local refreshMap = addMapping:Clone()
-refreshMap.Position = UDim2.new(0.52, 0, 1, -44)
-refreshMap.Text = "⟳ REFRESH"
-refreshMap.Parent = mappingBox
--- MONITOR
-local monitorPage = makePage("Monitor")
-local monitorCard = card(monitorPage, 280)
-local monitorLog = text(monitorCard, "DETECTION LOG\n\nWaiting for catch...", 8, 12, Color3.fromRGB(215,216,224), false)
-monitorLog.Size = UDim2.new(1, -24, 1, -40)
-monitorLog.TextYAlignment = Enum.TextYAlignment.Top
-
-local clearLog = Instance.new("TextButton")
-clearLog.Size = UDim2.new(0.3, 0, 0, 30)
-clearLog.Position = UDim2.new(0.7, -30, 1, -38)
-clearLog.Text = "🗑 CLEAR"
-clearLog.TextSize = 11
-clearLog.Font = Enum.Font.GothamBold
-clearLog.TextColor3 = Color3.fromRGB(230,230,230)
-clearLog.BackgroundColor3 = Color3.fromRGB(45,48,60)
-clearLog.Parent = monitorCard
-Instance.new("UICorner", clearLog).CornerRadius = UDim.new(0, 8)
-
--- FILTERS
+local homeLast = card(home, 85)
+local homeLastText = text(homeLast, "LAST CATCH:\nNo global logs captured yet.", 4, 11, Color3.fromRGB(230,231,236))
+homeLastText.Size = UDim2.new(1, -16, 1, -8)
+--[[ [BAGIAN 8 DARI 10] ]]
 local filtersPage = makePage("Filters")
-local filterCard = card(filtersPage, 260)
-text(filterCard, "RARITY FILTER", 8, 11, Color3.fromRGB(150,154,170), true)
+local filterCard = card(filtersPage, 160)
+text(filterCard, "RARITY FILTER", 4, 11, Color3.fromRGB(150,154,170), true)
 
 local rarityOrder = {"SECRET","FORGOTTEN","Mythic","Legendary","Epic","Rare","Uncommon","Common"}
 local filterButtons = {}
-for i,name in ipairs(rarityOrder) do
+for i, name in ipairs(rarityOrder) do
     local b = Instance.new("TextButton")
     local row = math.floor((i-1)/2)
     local col = (i-1)%2
-    b.Size = UDim2.new(0.5, -14, 0, 34)
-    b.Position = UDim2.new(col*0.5, col==0 and 8 or 6, 0, 36 + row*38)
+    b.Size = UDim2.new(0.5, -8, 0, 26)
+    b.Position = UDim2.new(col*0.5, col==0 and 5 or 3, 0, 25 + row*30)
     b.BackgroundColor3 = CONFIG.ALLOW_RARITY[name] and Color3.fromRGB(42,75,57) or Color3.fromRGB(34,36,44)
     b.Text = name .. (CONFIG.ALLOW_RARITY[name] and "  ✓" or "  ×")
     b.TextColor3 = Color3.fromRGB(230,232,238)
     b.Font = Enum.Font.GothamSemibold
     b.TextSize = 10
     b.Parent = filterCard
-    Instance.new("UICorner", b).CornerRadius = UDim.new(0, 8)
-    filterButtons[name] = b
+    Instance.new("UICorner", b).CornerRadius = UDim.new(0, 5)
+    
     b.Activated:Connect(function()
         CONFIG.ALLOW_RARITY[name] = not CONFIG.ALLOW_RARITY[name]
         b.BackgroundColor3 = CONFIG.ALLOW_RARITY[name] and Color3.fromRGB(42,75,57) or Color3.fromRGB(34,36,44)
@@ -443,144 +345,49 @@ for i,name in ipairs(rarityOrder) do
         saveConfig()
     end)
 end
-
-local weightBox = card(filtersPage, 70)
-text(weightBox, "MIN WEIGHT (kg)", 8, 11, Color3.fromRGB(150,154,170), true)
-local weightInput = Instance.new("TextBox")
-weightInput.Position = UDim2.fromOffset(12, 32)
-weightInput.Size = UDim2.new(1, -24, 0, 28)
-weightInput.Text = tostring(CONFIG.MIN_WEIGHT)
-weightInput.PlaceholderText = "0"
-weightInput.TextSize = 12
-weightInput.Font = Enum.Font.Gotham
-weightInput.TextColor3 = Color3.fromRGB(235,236,242)
-weightInput.BackgroundColor3 = Color3.fromRGB(32,34,42)
-weightInput.ClearTextOnFocus = false
-weightInput.Parent = weightBox
-Instance.new("UICorner", weightInput).CornerRadius = UDim.new(0, 8)
-weightInput.FocusLost:Connect(function()
-    CONFIG.MIN_WEIGHT = tonumber(weightInput.Text) or 0
-    weightInput.Text = tostring(CONFIG.MIN_WEIGHT)
-    saveConfig()
-end)
-
--- WEBHOOK
+--[[ [BAGIAN 9 DARI 10] ]]
 local webhookPage = makePage("Webhook")
-local webhookCard = card(webhookPage, 220)
-text(webhookCard, "DISCORD WEBHOOK", 8, 11, Color3.fromRGB(150,154,170), true)
+local webhookCard = card(webhookPage, 140)
+text(webhookCard, "DISCORD WEBHOOK URL", 4, 10, Color3.fromRGB(150,154,170), true)
 
 local webhookInput = Instance.new("TextBox")
-webhookInput.Position = UDim2.fromOffset(12, 36)
-webhookInput.Size = UDim2.new(1, -24, 0, 44)
+webhookInput.Position = UDim2.new(0, 8, 0, 24)
+webhookInput.Size = UDim2.new(1, -16, 0, 32)
 webhookInput.Text = CONFIG.WEBHOOK_URL
-webhookInput.PlaceholderText = "Paste webhook URL"
-webhookInput.TextSize = 11
+webhookInput.PlaceholderText = "Paste Discord Webhook Disini"
+webhookInput.TextSize = 10
 webhookInput.Font = Enum.Font.Gotham
 webhookInput.TextColor3 = Color3.fromRGB(235,236,242)
 webhookInput.BackgroundColor3 = Color3.fromRGB(32,34,42)
 webhookInput.ClearTextOnFocus = false
-webhookInput.TextWrapped = true
 webhookInput.Parent = webhookCard
-Instance.new("UICorner", webhookInput).CornerRadius = UDim.new(0, 8)
+Instance.new("UICorner", webhookInput).CornerRadius = UDim.new(0, 6)
 
 local saveWebhook = Instance.new("TextButton")
-saveWebhook.Position = UDim2.fromOffset(12, 90)
-saveWebhook.Size = UDim2.new(0.48, -6, 0, 34)
-saveWebhook.Text = "SAVE"
-saveWebhook.TextSize = 12
+saveWebhook.Position = UDim2.new(0, 8, 0, 64)
+saveWebhook.Size = UDim2.new(0.45, 0, 0, 28)
+saveWebhook.Text = "SIMPAN WEBHOOK"
+saveWebhook.TextSize = 10
 saveWebhook.Font = Enum.Font.GothamBold
 saveWebhook.TextColor3 = Color3.fromRGB(235,237,242)
 saveWebhook.BackgroundColor3 = Color3.fromRGB(45,48,60)
 saveWebhook.Parent = webhookCard
-Instance.new("UICorner", saveWebhook).CornerRadius = UDim.new(0, 8)
+Instance.new("UICorner", saveWebhook).CornerRadius = UDim.new(0, 6)
 
 local testWebhook = saveWebhook:Clone()
-testWebhook.Position = UDim2.new(0.52, 0, 0, 90)
-testWebhook.Text = "TEST"
+testWebhook.Position = UDim2.new(0.55, 0, 0, 64)
+testWebhook.Text = "TEST WEBHOOK"
 testWebhook.Parent = webhookCard
 
 local mentionInput = webhookInput:Clone()
-mentionInput.Position = UDim2.fromOffset(12, 134)
-mentionInput.Size = UDim2.new(1, -24, 0, 34)
+mentionInput.Position = UDim2.new(0, 8, 0, 100)
+mentionInput.Size = UDim2.new(1, -16, 0, 28)
 mentionInput.Text = CONFIG.MENTION
-mentionInput.PlaceholderText = "Mention: <@&ROLE_ID>"
+mentionInput.PlaceholderText = "Mention Role ID (Optional: <@&RoleID>)"
 mentionInput.Parent = webhookCard
-
--- DIALOG MAPPING
-local dialog = Instance.new("Frame")
-dialog.Size = UDim2.fromOffset(300, 220)
-dialog.Position = UDim2.new(0.5, -150, 0.5, -110)
-dialog.BackgroundColor3 = Color3.fromRGB(20,21,27)
-dialog.Visible = false
-dialog.ZIndex = 20
-dialog.Parent = gui
-Instance.new("UICorner", dialog).CornerRadius = UDim.new(0, 12)
-Instance.new("UIStroke", dialog).Color = Color3.fromRGB(70,73,85)
-
-local dt = text(dialog, "ADD PLAYER → DISCORD", 10, 13, Color3.fromRGB(240,241,246), true)
-dt.ZIndex = 21
-local robloxBox = Instance.new("TextBox")
-robloxBox.Position = UDim2.fromOffset(12, 46)
-robloxBox.Size = UDim2.new(1, -24, 0, 38)
-robloxBox.PlaceholderText = "Roblox username"
-robloxBox.Text = ""
-robloxBox.TextSize = 12
-robloxBox.Font = Enum.Font.Gotham
-robloxBox.TextColor3 = Color3.fromRGB(235,236,242)
-robloxBox.BackgroundColor3 = Color3.fromRGB(32,34,42)
-robloxBox.ZIndex = 21
-robloxBox.Parent = dialog
-Instance.new("UICorner", robloxBox).CornerRadius = UDim.new(0, 8)
-
-local discordBox = robloxBox:Clone()
-discordBox.Position = UDim2.fromOffset(12, 92)
-discordBox.PlaceholderText = "Discord User ID (reuse allowed)"
-discordBox.Parent = dialog
-
-local mapSave = Instance.new("TextButton")
-mapSave.Position = UDim2.fromOffset(12, 142)
-mapSave.Size = UDim2.new(0.48, -6, 0, 34)
-mapSave.Text = "SAVE"
-mapSave.TextSize = 12
-mapSave.Font = Enum.Font.GothamBold
-mapSave.TextColor3 = Color3.fromRGB(235,237,242)
-mapSave.BackgroundColor3 = Color3.fromRGB(45,48,60)
-mapSave.ZIndex = 21
-mapSave.Parent = dialog
-Instance.new("UICorner", mapSave).CornerRadius = UDim.new(0, 8)
-
-local mapCancel = mapSave:Clone()
-mapCancel.Position = UDim2.new(0.52, 0, 0, 142)
-mapCancel.Text = "CANCEL"
-mapCancel.Parent = dialog
-local function refreshMappings()
-    local lines = {}
-    for roblox,discord in pairs(mappings) do
-        lines[#lines+1] = "👤 "..roblox.."  →  "..discord
-    end
-    table.sort(lines)
-    mappingText.Text = #lines > 0 and table.concat(lines, "\n") or "No mappings added yet."
-end
-
-addMapping.Activated:Connect(function() dialog.Visible = true end)
-refreshMap.Activated:Connect(refreshMappings)
-mapCancel.Activated:Connect(function() dialog.Visible = false end)
-mapSave.Activated:Connect(function()
-    local r,d = trim(robloxBox.Text), trim(discordBox.Text)
-    if r ~= "" and d ~= "" then
-        mappings[r] = d
-        refreshMappings()
-        robloxBox.Text = ""
-        discordBox.Text = ""
-        dialog.Visible = false
-        saveConfig()
-    end
-end)
 
 saveWebhook.Activated:Connect(function()
     CONFIG.WEBHOOK_URL = trim(webhookInput.Text)
-    homeWebhookStatus.Text = CONFIG.WEBHOOK_URL ~= "" and "● Configured" or "● Not configured"
-    homeWebhookStatus.TextColor3 = CONFIG.WEBHOOK_URL ~= "" and Color3.fromRGB(95,225,145) or Color3.fromRGB(230,190,95)
     saveConfig()
 end)
 
@@ -600,60 +407,48 @@ testWebhook.Activated:Connect(function()
             Headers = {["Content-Type"]="application/json"},
             Body = HttpService:JSONEncode({
                 username = CONFIG.WEBHOOK_USERNAME,
-                embeds = {{
-                    title = "LFAMILIA RADAR",
-                    description = "Webhook test berhasil.",
-                    color = 0x5865F2,
-                    footer = {text="LFAMILIA Radar V5 • Fish It"}
-                }}
+                content = "Test koneksi webhook dari Delta Android berhasil! 🎣"
             })
         })
     end)
 end)
-
--- Tab buttons
-local tabNames = {
-    {"⌂","Home"}, {"♟","Players"}, {"◈","Monitor"}, {"⚙","Filters"}, {"🔔","Webhook"}
-}
-for i,item in ipairs(tabNames) do
+--[[ [BAGIAN 10 DARI 10] ]]
+local tabNames = { {"⌂", "Home"}, {"⚙", "Filters"}, {"🔔", "Webhook"} }
+for i, item in ipairs(tabNames) do
     local b = Instance.new("TextButton")
-    b.Size = UDim2.new(0.2, -4, 1, -4)
-    b.Position = UDim2.new((i-1)*0.2, 2, 0, 2)
+    b.Size = UDim2.new(0.33, -4, 1, -4)
+    b.Position = UDim2.new((i-1)*0.33, 2, 0, 2)
     b.BackgroundTransparency = 1
-    b.Text = item[1] .. "\n" .. item[2]
-    b.TextSize = 9
+    b.Text = item[1] .. " " .. item[2]
+    b.TextSize = 11
     b.Font = Enum.Font.GothamSemibold
     b.TextColor3 = Color3.fromRGB(135,138,150)
     b.Parent = tabbar
-    Instance.new("UICorner", b).CornerRadius = UDim.new(0, 6)
     tabs[item[2]] = b
+    Instance.new("UICorner", b).CornerRadius = UDim.new(0, 5)
+    
     b.Activated:Connect(function()
         activeTab = item[2]
-        for n,p in pairs(pages) do p.Visible = (n == activeTab) end
-        for n,t in pairs(tabs) do t.TextColor3 = (n == activeTab) and Color3.fromRGB(235,237,242) or Color3.fromRGB(135,138,150) end
+        for n, p in pairs(pages) do p.Visible = (n == activeTab) end
+        for n, t in pairs(tabs) do t.TextColor3 = (n == activeTab) and Color3.fromRGB(235,237,242) or Color3.fromRGB(135,138,150) end
     end)
 end
 pages.Home.Visible = true
 tabs.Home.TextColor3 = Color3.fromRGB(235,237,242)
 
--- Minimize
 local minimized = false
 min.Activated:Connect(function()
     minimized = not minimized
     tabbar.Visible = not minimized
-    for _,p in pairs(pages) do p.Visible = not minimized and (_ == activeTab) or false end
-    main.Size = minimized and UDim2.fromOffset(240, 50) or UDim2.fromOffset(340, 500)
+    for _, p in pairs(pages) do p.Visible = not minimized and (_ == activeTab) or false end
+    main.Size = minimized and UDim2.fromOffset(180, 40) or UDim2.fromOffset(340, 320)
     min.Text = minimized and "+" or "−"
 end)
 
--- Drag
 local dragging, dragInput, dragStart, startPos
 header.InputBegan:Connect(function(input)
     if input.UserInputType == Enum.UserInputType.Touch or input.UserInputType == Enum.UserInputType.MouseButton1 then
-        dragging = true
-        dragInput = input
-        dragStart = input.Position
-        startPos = main.Position
+        dragging = true dragInput = input dragStart = input.Position startPos = main.Position
     end
 end)
 UIS.InputChanged:Connect(function(input)
@@ -662,72 +457,26 @@ UIS.InputChanged:Connect(function(input)
         main.Position = UDim2.new(startPos.X.Scale, startPos.X.Offset + delta.X, startPos.Y.Scale, startPos.Y.Offset + delta.Y)
     end
 end)
-UIS.InputEnded:Connect(function(input)
-    if input == dragInput or input.UserInputType == Enum.UserInputType.MouseButton1 then dragging = false end
-end)
+UIS.InputEnded:Connect(function(input) if input == dragInput or input.UserInputType == Enum.UserInputType.MouseButton1 then dragging = false end end)
 
--- Clear log
-clearLog.Activated:Connect(function()
-    monitorLog.Text = "DETECTION LOG\n\nLog cleared."
-end)
-
--- Update UI
-local function updateUI(data, fishData, rarity, variant)
+local function updateUI(data)
     state.Detected = state.Detected + 1
-    state.Last = data
-    local r = rarity and rarity.Name or "Unknown"
-    local v = variant and variant.Name or ""
-    local line = string.format("✦ %s\n%s%s\n⚖ %.2f kg  •  🎲 1 in %s\n👤 %s",
-        tostring(fishData.Name or data.Fish), r, v ~= "" and ("  •  "..v) or "",
-        data.Weight, tostring(data.Chance), tostring(data.Player))
-    homeLastText.Text = "LAST CATCH\n\n"..line
-    local current = monitorLog.Text
-    local newLog = "DETECTION LOG\n\n"..line.."\n\n"..current:sub(18)
-    if #newLog > 3000 then
-        newLog = newLog:sub(1, 3000) .. "\n... (trimmed)"
-    end
-    monitorLog.Text = newLog
-    homeStats.Text = string.format("Players %d   •   Detected %d   •   Sent %d",
-        #Players:GetPlayers(), state.Detected, state.Sent)
+    local line = string.format("👤 Player: %s\n🐟 Fish: %s\n⚖ Berat: %.2f kg\n🎲 Chance: 1 in %s", data.Player, data.Fish, data.Weight, tostring(data.Chance))
+    homeLastText.Text = "LAST CATCH:\n" .. line
+    homeStats.Text = string.format("Players %d  •  Detected %d  •  Sent %d", #Players:GetPlayers(), state.Detected, state.Sent)
 end
 
 local function handleMessage(text)
     local data = parseCatch(text)
     if not data then return end
-    local fishData, fishName, detectedVariant = resolveFish(data.Fish)
-    if not fishData then return end
-    local rarity = resolveRarity(fishData)
-    local variant = data.Variant and resolveVariant(data.Variant) or detectedVariant
-    updateUI(data, fishData, rarity, variant)
+    updateUI(data)
     sendWebhook(data)
 end
 
--- Deteksi chat
 if TextChatService.MessageReceived then
     TextChatService.MessageReceived:Connect(function(msg)
         if msg and msg.Text then handleMessage(msg.Text) end
     end)
 end
 
--- Status database
-local dbStatus = "✅ Database loaded"
-if not next(FishDatabase) then dbStatus = "⚠️ Fish DB empty" end
-if not next(RarityDatabase) then dbStatus = dbStatus .. " | Rarity DB empty" end
-if not next(VariantDatabase) then dbStatus = dbStatus .. " | Variant DB empty" end
-print("[LFAMILIA] " .. dbStatus)
-
--- Refresh UI setelah load
-refreshMappings()
-if CONFIG.WEBHOOK_URL ~= "" then
-    homeWebhookStatus.Text = "● Configured"
-    homeWebhookStatus.TextColor3 = Color3.fromRGB(95,225,145)
-end
-weightInput.Text = tostring(CONFIG.MIN_WEIGHT)
-webhookInput.Text = CONFIG.WEBHOOK_URL
-mentionInput.Text = CONFIG.MENTION
-for name, btn in pairs(filterButtons) do
-    btn.BackgroundColor3 = CONFIG.ALLOW_RARITY[name] and Color3.fromRGB(42,75,57) or Color3.fromRGB(34,36,44)
-    btn.Text = name .. (CONFIG.ALLOW_RARITY[name] and "  ✓" or "  ×")
-end
-
-print("[LFAMILIA] Radar V5 - Delta Edition with Auto-Save loaded.")
+print("[LFAMILIA Android] Radar V5 Selesai Dimuat Total!")
