@@ -13,9 +13,9 @@ local LocalPlayer = Players.LocalPlayer
 local CONFIG = {
     WEBHOOK_URL = "",
     JOIN_LEAVE_URL = "", -- TERPISAH: URL khusus untuk log masuk dan keluar pemain
-    FISH_DB_URL = "https://githubusercontent.com",
-    RARITY_DB_URL = "https://githubusercontent.com",
-    VARIANT_DB_URL = "https://githubusercontent.com",
+    FISH_DB_URL = "https://raw.githubusercontent.com/muhammadaldy198/LFAMILIA/refs/heads/main/FishDatabase.lua",
+    RARITY_DB_URL = "https://raw.githubusercontent.com/muhammadaldy198/LFAMILIA/refs/heads/main/RarityDatabase.lua",
+    VARIANT_DB_URL = "https://raw.githubusercontent.com/muhammadaldy198/LFAMILIA/refs/heads/main/VariantDatabase.lua",
     ALLOW_RARITY = {
         SECRET = true, FORGOTTEN = true, Mythic = true,
         Legendary = true, Epic = true, Rare = true,
