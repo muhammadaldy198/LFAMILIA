@@ -25,9 +25,9 @@ local LocalPlayer = Players.LocalPlayer
 
 local CONFIG = {
     WEBHOOK_URL = "",
-    FISH_DB_URL = "https://raw.githubusercontent.com/YOUR_USER/YOUR_REPO/main/FishDatabase.lua",
-    RARITY_DB_URL = "https://raw.githubusercontent.com/YOUR_USER/YOUR_REPO/main/RarityDatabase.lua",
-    VARIANT_DB_URL = "https://raw.githubusercontent.com/YOUR_USER/YOUR_REPO/main/VariantDatabase.lua",
+    FISH_DB_URL = "https://raw.githubusercontent.com/muhammadaldy198/LFAMILIA/refs/heads/main/FishDatabase.lua",
+    RARITY_DB_URL = "https://raw.githubusercontent.com/muhammadaldy198/LFAMILIA/refs/heads/main/RarityDatabase.lua",
+    VARIANT_DB_URL = "https://raw.githubusercontent.com/muhammadaldy198/LFAMILIA/refs/heads/main/VariantDatabase.lua",
 
     -- Notification filters
     ALLOW_RARITY = {
