@@ -722,14 +722,27 @@ local function updateUI(data, fishData, rarity, variant)
     homeStats.Text = string.format("Players %d   •   Detected %d   •   Sent %d",
         #Players:GetPlayers(), state.Detected, state.Sent)
 end
+local function handleMessage(text)
+    local data = parseCatch(text)
+    if not data then return end
 
+    local fishData, fishName, detectedVariant = resolveFish(data.Fish)
+    if not fishData then return end
 
--- Main detector.
+    local rarity = resolveRarity(fishData)
+    local variant = data.Variant and resolveVariant(data.Variant) or detectedVariant
+
+    -- Jalankan update ke layar HP dan kirim ke Discord
+    updateUI(data, fishData, rarity, variant)
+    sendWebhook(data)
+end
+-- Deteksi pesan masuk lewat TextChatService (DIPERBAIKI)
 if TextChatService.MessageReceived then
-    TextChatService.MessageReceived:Connect(function(msg)
-        local text = msg and msg.Text
-        if text then handleMessage(text) end
+    TextChatService.MessageReceived:Connect(function(textChatMessage)
+        if textChatMessage and textChatMessage.Text then 
+            handleMessage(textChatMessage.Text) 
+        end
     end)
 end
 
-print("[LFAMILIA] Radar V5 final loaded.")
+print("[LFAMILIA] Radar V5 final loaded and fixed.")
