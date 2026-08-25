@@ -268,8 +268,10 @@ pcall(function() gui.Parent = CoreGui end)
 if not gui.Parent then gui.Parent = LocalPlayer:WaitForChild("PlayerGui") end
 
 local main = Instance.new("Frame")
-main.Size = UDim2.fromOffset(340, 500)
-main.Position = UDim2.new(0.5, -170, 0.5, -250)
+local viewport = workspace.CurrentCamera.ViewportSize
+local w, h = viewport.X, viewport.Y
+main.Size = UDim2.new(0, w * 0.85, 0, h * 0.75)   -- 85% lebar, 75% tinggi
+main.Position = UDim2.new(0.5, -w*0.425, 0.5, -h*0.375)  -- tengah
 main.BackgroundColor3 = Color3.fromRGB(15,16,21)
 main.BorderSizePixel = 0
 main.Parent = gui
