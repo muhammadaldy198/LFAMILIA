@@ -180,9 +180,44 @@ end
 
 local function thumbnail(assetId)
     local id = tostring(assetId or ""):match("%d+")
-    if not id then return nil end
-    return "https://www.roblox.com/asset-thumbnail/image?assetId=" ..
-        id .. "&width=420&height=420&format=png"
+    if not id then
+        return nil
+    end
+
+    local url =
+        "https://thumbnails.roblox.com/v1/assets" ..
+        "?assetIds=" .. id ..
+        "&size=420x420" ..
+        "&format=Png" ..
+        "&isCircular=false"
+
+    local ok, response = pcall(function()
+        return game:HttpGet(url)
+    end)
+
+    if not ok then
+        warn("[Thumbnail] Request gagal:", response)
+        return nil
+    end
+
+    local success, data = pcall(function()
+        return HttpService:JSONDecode(response)
+    end)
+
+    if not success then
+        warn("[Thumbnail] JSON gagal:", data)
+        return nil
+    end
+
+    local item = data.data and data.data[1]
+
+    if item and item.imageUrl then
+        print("[Thumbnail] URL:", item.imageUrl)
+        return item.imageUrl
+    end
+
+    warn("[Thumbnail] Tidak ada imageUrl. State:", item and item.state or "nil")
+    return nil
 end
 
 local function sendWebhook(data)
