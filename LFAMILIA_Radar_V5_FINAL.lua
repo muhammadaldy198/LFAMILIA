@@ -129,7 +129,7 @@ end
 local function thumbnail(assetId)
     local id = tostring(assetId or ""):match("%d+")
     if not id then return nil end
-    return "https://roblox.com" .. id .. "&width=420&height=420&format=png"
+    return "https://assetdelivery.roblox.com/v1/asset?id=" .. id
 end
 -- =============================================================================
 -- HEADER: TEXT PARSER & FISH IDENTIFICATION LOGIC
@@ -182,7 +182,7 @@ local function resolveFish(name)
             end
         end
     end
-    return { Id = 1187, Rarity = "Legendary" }, name, nil
+    return nil, name, nil
 end
 
 local function resolveRarity(fishData)
