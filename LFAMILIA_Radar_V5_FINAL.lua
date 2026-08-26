@@ -249,7 +249,6 @@ local function resolveRarity(fishData)
             if type(tier) == "table" and tostring(tier.Name):lower() == tostring(fishData.Rarity):lower() then return tier end
         end
     end
-    return { Name = "Legendary", Colors = {{255,184,42}} }
 end
 
 local function seenRecently(key)
@@ -314,7 +313,6 @@ local function sendWebhook(data)
     -- PRIORITAS 1: Rarity dari WARNA CHAT
     -- =====================================================
     local rarity = nil
-    local rarityName = "Legendary"
     
     if data.RarityColor then
         local r, g, b = data.RarityColor[1], data.RarityColor[2], data.RarityColor[3]
@@ -863,8 +861,23 @@ testWebhook.Activated:Connect(function()
         infoUI.Text = "⚠️ Isi URL webhook terlebih dahulu!"
         return 
     end
-    sendWebhook({ Player = LocalPlayer.Name, Fish = "Magmaquill Pufferfish", Weight = 4530, Chance = "12.50K" })
-    infoUI.Text = "👁 Preview dikirim (cek channel Discord)"
+
+    -- =====================================================
+    -- PREVIEW DATA SESUAI ASLI (Astralune = FORGOTTEN)
+    -- =====================================================
+    local previewData = {
+        Player = LocalPlayer.Name,
+        Fish = "Astralune",                     -- Nama ikan
+        RawFish = "Gemstone Astralune",         -- Dengan varian di depan
+        Weight = 1200000,                       -- 1.24M kg
+        Chance = "20,000,000",                  -- Peluang
+        RarityColor = {255, 255, 255},          -- Warna putih (FORGOTTEN)
+        -- Opsional: kita bisa langsung set rarityName agar tidak bergantung deteksi
+        -- tapi kita biarkan deteksi otomatis berdasarkan warna.
+    }
+    
+    sendWebhook(previewData)
+    infoUI.Text = "👁 Preview FORGOTTEN dikirim (cek channel Discord)"
 end)
 
 -- Tab Navigation
