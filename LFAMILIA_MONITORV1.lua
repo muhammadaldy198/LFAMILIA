@@ -360,12 +360,24 @@ local function sendWebhook(data)
     if seenRecently(key) then return false end
 
     -- Ambil asset ID untuk thumbnail
+    -- PRIORITAS 1: Asset ID dari preview (bypass)
+local assetId = data._assetId
+
+-- PRIORITAS 2: Asset ID dari database
+if not assetId then
     local fishData = resolveFish(data.Fish)
-    local assetId = nil
     if fishData and fishData.AssetId then
         assetId = tostring(fishData.AssetId):match("%d+")
     end
+end
 
+-- DEBUG: Cek apakah assetId terkirim
+if assetId then
+    print("[DEBUG] Asset ID terkirim:", assetId)
+else
+    print("[DEBUG] Asset ID TIDAK ditemukan untuk:", data.Fish)
+    end
+    
     -- Ambil varian (jika ada)
     local variant = nil
     if data.RawFish then
@@ -902,12 +914,14 @@ testWebhook.Activated:Connect(function()
     -- PREVIEW DATA SESUAI ASLI (Astralune = FORGOTTEN)
     -- =====================================================
     local previewData = {
-        Player = LocalPlayer.Name,
-        Fish = "Astralune",                     -- Nama ikan
-        RawFish = "Gemstone Astralune",         -- Dengan varian di depan
-        Weight = 1200000,                       -- 1.24M kg
-        Chance = "20,000,000",                  -- Peluang
-        RarityColor = {255, 255, 255},          -- Warna putih (FORGOTTEN)
+    Player = LocalPlayer.Name,
+    Fish = "Astralune",
+    RawFish = "Gemstone Astralune",
+    Weight = 1200000,
+    Chance = "20,000,000",
+    RarityColor = {255, 255, 255},
+    _assetId = "90494527372442",  -- WAJIB ADA
+        }          -- Warna putih (FORGOTTEN)
         -- Opsional: kita bisa langsung set rarityName agar tidak bergantung deteksi
         -- tapi kita biarkan deteksi otomatis berdasarkan warna.
     }
