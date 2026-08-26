@@ -236,7 +236,7 @@ local function resolveFish(name)
             end
         end
     end
-    return { Id = 1187, Rarity = "Legendary" }, name, nil
+    return nil, name, nil
 end
 
 local function resolveRarity(fishData)
