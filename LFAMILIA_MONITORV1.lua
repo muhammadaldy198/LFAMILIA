@@ -302,23 +302,28 @@ local function resolveRarityByColor(r, g, b)
 end
 
 local function sendWebhook(data)
-    if CONFIG.WEBHOOK_URL == "" then return false end
+    if CONFIG.WEBHOOK_URL == "" then 
+        logError("Webhook URL kosong")
+        return false 
+    end
+
     local req = requestFn()
     if not req then 
         logError("Tidak ada fungsi request di executor")
         return false 
     end
 
-    -- =====================================================
     -- PRIORITAS 1: Rarity dari WARNA CHAT
-    -- =====================================================
     local rarity = nil
+    local rarityName = "Legendary"
+    local embedColor = 0xFFFFFF
     
     if data.RarityColor then
         local r, g, b = data.RarityColor[1], data.RarityColor[2], data.RarityColor[3]
         rarity = resolveRarityByColor(r, g, b)
         if rarity then
             rarityName = rarity.Name
+            embedColor = r * 65536 + g * 256 + b
         end
     end
     
@@ -326,7 +331,13 @@ local function sendWebhook(data)
     if not rarity then
         local fishData = resolveFish(data.Fish)
         rarity = resolveRarity(fishData)
-        if rarity then rarityName = rarity.Name end
+        if rarity then 
+            rarityName = rarity.Name 
+        else
+            -- Jika ikan tidak dikenal, catat log dan batalkan
+            logError("⚠️ Ikan tidak dikenal: " .. data.Fish .. " (tidak dikirim)")
+            return false
+        end
     end
 
     -- FILTER kelangkaan
@@ -338,63 +349,78 @@ local function sendWebhook(data)
     local key = data.Player .. "|" .. data.Fish .. "|" .. tostring(data.Weight)
     if seenRecently(key) then return false end
 
-    local displayWeight = data.Weight >= 1000 and string.format("%.2fK kg", data.Weight/1000) or string.format("%.2f kg", data.Weight)
-
-    -- =====================================================
-    -- WARNA EMBED: Pakai warna chat (paling akurat)
-    -- =====================================================
-    local embedColor = 0xFFFFFF
-    if data.RarityColor then
-        embedColor = data.RarityColor[1] * 65536 + data.RarityColor[2] * 256 + data.RarityColor[3]
-    elseif rarity and rarity.Colors then
-        embedColor = rgbInt(rarity.Colors)
-    end
-
-    local embed = {
-        title = "✦ " .. string.upper(rarityName) .. " CATCH",
-        description = "👤 **Pemain:** `" .. data.Player .. "`\n🎣 **Tangkapan:** `" .. data.Fish .. "`\n⚖ **Berat:** `" .. displayWeight .. "`\n🎲 **Peluang:** `1 in " .. tostring(data.Chance) .. "`",
-        color = embedColor,
-        footer = { text = "LFAMILIA Minimalist Radar V5" },
-        timestamp = os.date("!%Y-%m-%dT%H:%M:%SZ"),
-    }
-
-    -- THUMBNAIL tetap dari FishDatabase
+    -- Ambil asset ID untuk thumbnail
     local fishData = resolveFish(data.Fish)
+    local assetId = nil
     if fishData and fishData.AssetId then
-        local imgUrl = thumbnail(fishData.AssetId)
-        if imgUrl then embed.thumbnail = { url = imgUrl } end
+        assetId = tostring(fishData.AssetId):match("%d+")
     end
 
-    -- MENTION
-    local content = ""
-    local rawMention = trim(CONFIG.MENTION)
-    if rawMention ~= "" then
-        if tonumber(rawMention) then
-            content = "<@&" .. rawMention .. ">"
-        else
-            content = rawMention
+    -- Ambil varian (jika ada)
+    local variant = nil
+    if data.RawFish then
+        for _, v in pairs(VariantDatabase) do
+            if type(v) == "table" and v.Name then
+                local prefix = v.Name:lower() .. " "
+                if data.RawFish:lower():sub(1, #prefix) == prefix then
+                    variant = v.Name
+                    break
+                end
+            end
         end
     end
 
+    -- Server ID dan waktu
+    local server_id = game.JobId or ""
+    local time_str = os.date("%H:%M WIB")
+
+    -- Mention
+    local mention = ""
+    local rawMention = trim(CONFIG.MENTION)
+    if rawMention ~= "" then
+        if tonumber(rawMention) then
+            mention = "<@&" .. rawMention .. ">"
+        else
+            mention = rawMention
+        end
+    end
     local mappedDiscord = mappings[data.Player] or mappings[data.Player:lower()]
     if mappedDiscord and mappedDiscord ~= "" then
-        content = (content ~= "" and (content .. " ") or "") .. "<@" .. tostring(mappedDiscord) .. ">"
+        mention = (mention ~= "" and (mention .. " ") or "") .. "<@" .. tostring(mappedDiscord) .. ">"
     end
 
-    local payload = { username = CONFIG.WEBHOOK_USERNAME, content = trim(content), embeds = {embed} }
+    -- Payload untuk server PythonAnywhere
+    local payload = {
+        discord_url = CONFIG.WEBHOOK_URL,   -- URL Discord tetap dari UI
+        player = data.Player,
+        fish = data.Fish,
+        weight = data.Weight,
+        chance = data.Chance,
+        rarity = rarityName,
+        color = embedColor,
+        asset_id = assetId,
+        variant = variant,
+        server_id = server_id,
+        time = time_str,
+        mention = mention
+    }
+
+    -- Kirim ke SERVER (bukan langsung ke Discord)
+    local server_url = "https://Aldayyy.pythonanywhere.com/api/catch"  -- <-- GANTI dengan URL-mu
     local ok, err = pcall(function()
         req({
-            Url = CONFIG.WEBHOOK_URL,
+            Url = server_url,
             Method = "POST",
             Headers = {["Content-Type"] = "application/json"},
             Body = HttpService:JSONEncode(payload),
         })
     end)
+
     if ok then 
         state.Sent = state.Sent + 1 
         return true 
     else
-        logError("Webhook ikan gagal: " .. tostring(err))
+        logError("Gagal kirim ke server: " .. tostring(err))
         return false
     end
 end
