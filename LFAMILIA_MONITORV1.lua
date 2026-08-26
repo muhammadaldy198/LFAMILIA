@@ -888,7 +888,7 @@ UIS.InputEnded:Connect(function(input)
     end 
 end)
 -- =============================================================================
--- BAGIAN 10 : REAL-TIME INTERCEPTOR (CHAT HOOK & LOOP)
+-- BAGIAN 10 : REAL-TIME INTERCEPTOR (POLLING CHAT HISTORY)
 -- =============================================================================
 
 local function updateUI(data, lineInfo)
@@ -913,6 +913,38 @@ local function handleMessage(text)
     sendWebhook(data)
 end
 
+-- ============================================================
+-- METODE POLLING: BACA CHAT DARI HISTORY SETIAP DETIK
+-- ============================================================
+local lastMessage = ""
+
+task.spawn(function()
+    while true do
+        task.wait(1)
+        pcall(function()
+            -- Coba ambil history chat dari TextChatService
+            local success, messages = pcall(function()
+                return TextChatService:GetHistoryAsync()
+            end)
+            
+            if success and messages then
+                for _, msg in ipairs(messages) do
+                    if msg.Text and msg.Text ~= "" and msg.Text ~= lastMessage then
+                        lastMessage = msg.Text
+                        -- Cek apakah ini pesan tangkapan
+                        if msg.Text:match("obtained") then
+                            pcall(function() handleMessage(msg.Text) end)
+                        end
+                    end
+                end
+            end
+        end)
+    end
+end)
+
+-- ============================================================
+-- METODE HOOK TETAP DIPAKAI SEBAGAI PELENGKAP
+-- ============================================================
 local function setupChatHook()
     local success, channel = pcall(function()
         return TextChatService:WaitForChild("TextChannels"):WaitForChild("ROBLOX")
@@ -942,6 +974,9 @@ end
 
 setupChatHook()
 
+-- ============================================================
+-- PLAYER JOIN / LEAVE
+-- ============================================================
 Players.PlayerAdded:Connect(function(player)
     local logLine = "📥 Player Masuk: " .. player.Name
     pcall(function()
@@ -970,6 +1005,9 @@ Players.PlayerRemoving:Connect(function(player)
     pcall(function() sendJoinLeaveWebhook(player.Name, "LEFT") end)
 end)
 
+-- ============================================================
+-- LOOP UPDATE STATISTIK
+-- ============================================================
 task.spawn(function()
     while true do
         pcall(function()
@@ -981,4 +1019,4 @@ task.spawn(function()
 end)
 
 refreshMappings()
-print("[LFAMILIA Radar • Modern Minimalist Profile Slotted Edition] Fully Fixed!")
+print("[LFAMILIA Radar • POLLING MODE ACTIVE] Fully Fixed!")
