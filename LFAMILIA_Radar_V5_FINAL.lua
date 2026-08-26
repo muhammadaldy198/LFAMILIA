@@ -325,8 +325,11 @@ local function sendWebhook(data)
 end
 
 local function sendJoinLeaveWebhook(playerName, action)
-    local targetURL = CONFIG.JOIN_LEAVE_URL ~= "" and CONFIG.JOIN_LEAVE_URL or CONFIG.WEBHOOK_URL
-    if targetURL == "" then return end
+    -- =====================================================
+    -- [PERUBAHAN] TIDAK ADA FALLBACK KE WEBHOOK UTAMA
+    -- Hanya kirim jika JOIN_LEAVE_URL diisi.
+    -- =====================================================
+    if CONFIG.JOIN_LEAVE_URL == "" then return end
     
     local req = requestFn()
     if not req then 
@@ -349,7 +352,7 @@ local function sendJoinLeaveWebhook(playerName, action)
     }
     local ok, err = pcall(function() 
         req({ 
-            Url = targetURL, 
+            Url = CONFIG.JOIN_LEAVE_URL,  -- LANGSUNG PAKAI URL INI, TANPA FALLBACK
             Method = "POST", 
             Headers = {["Content-Type"]="application/json"}, 
             Body = HttpService:JSONEncode(payload) 
