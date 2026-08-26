@@ -177,7 +177,28 @@ local function parseCatch(message)
     end
     
     if player and fish then
-        local cleanChance = trim(chance):gsub(" chance!", " "):gsub("!", " ")
+        local cleanFish = trim(fish)
+        local r, g, b = nil, nil, nil
+        
+        -- =====================================================
+        -- EKSTRAK WARNA DARI RichText
+        -- =====================================================
+        local colorHex, fishName = cleanFish:match('<font color="([^"]+)">(.-)</font>')
+        if colorHex and fishName then
+            local hex = colorHex:gsub("#", "")
+            r = tonumber(hex:sub(1,2), 16)
+            g = tonumber(hex:sub(3,4), 16)
+            b = tonumber(hex:sub(5,6), 16)
+            cleanFish = trim(fishName)
+        else
+            local cr, cg, cb, fishName = cleanFish:match('<font color="rgb%((%d+),%s*(%d+),%s*(%d+)%)">(.-)</font>')
+            if cr and cg and cb and fishName then
+                r, g, b = tonumber(cr), tonumber(cg), tonumber(cb)
+                cleanFish = trim(fishName)
+            end
+        end
+        
+        -- Parsing Berat
         local rawWeight = 0
         local numericPart, kIndicator = weightStr:upper():match("([%d%.]+)([K]?)")
         if numericPart then
@@ -187,9 +208,11 @@ local function parseCatch(message)
 
         return {
             Player = trim(player),
-            Fish = trim(fish),
+            Fish = cleanFish,                     -- Nama ikan bersih (tanpa tag HTML)
             Weight = rawWeight,
-            Chance = trim(cleanChance),
+            Chance = trim(chance):gsub(" chance!", ""):gsub("!", ""),
+            RawFish = trim(fish),                 -- (opsional untuk debug)
+            RarityColor = (r and g and b) and {r, g, b} or nil,  -- <-- SIMPAN RGB
         }
     end
     return nil
@@ -257,6 +280,27 @@ local function logError(errMsg)
     local newLog = "DETECTION LOG\n\n["..time.."] ❌ ERROR: " .. errMsg .. "\n" .. table.concat(lines)
     monitorLog.Text = newLog
 end
+-- =============================================================================
+-- [TAMBAHAN] Mencari rarity berdasarkan warna RGB (dari chat)
+-- =============================================================================
+local function resolveRarityByColor(r, g, b)
+    if not r or not g or not b then return nil end
+    
+    for _, tier in pairs(RarityDatabase) do
+        if tier.Colors then
+            for _, color in ipairs(tier.Colors) do
+                if type(color) == "table" then
+                    local cr, cg, cb = color[1], color[2], color[3]
+                    -- Toleransi ±5 karena server kadang beda tipis
+                    if math.abs(cr - r) <= 5 and math.abs(cg - g) <= 5 and math.abs(cb - b) <= 5 then
+                        return tier
+                    end
+                end
+            end
+        end
+    end
+    return nil
+end
 
 local function sendWebhook(data)
     if CONFIG.WEBHOOK_URL == "" then return false end
@@ -266,11 +310,31 @@ local function sendWebhook(data)
         return false 
     end
 
-    local fishData, fishName, detectedVariant = resolveFish(data.Fish)
-    local rarity = resolveRarity(fishData)
-    local rarityName = rarity and rarity.Name or "Legendary"
+    -- =====================================================
+    -- PRIORITAS 1: Rarity dari WARNA CHAT
+    -- =====================================================
+    local rarity = nil
+    local rarityName = "Legendary"
+    
+    if data.RarityColor then
+        local r, g, b = data.RarityColor[1], data.RarityColor[2], data.RarityColor[3]
+        rarity = resolveRarityByColor(r, g, b)
+        if rarity then
+            rarityName = rarity.Name
+        end
+    end
+    
+    -- PRIORITAS 2: Fallback ke FishDatabase (jika warna tidak ditemukan)
+    if not rarity then
+        local fishData = resolveFish(data.Fish)
+        rarity = resolveRarity(fishData)
+        if rarity then rarityName = rarity.Name end
+    end
 
-    if not CONFIG.ALLOW_RARITY[rarityName] and not CONFIG.ALLOW_RARITY[string.upper(rarityName)] then return false end
+    -- FILTER kelangkaan
+    if not CONFIG.ALLOW_RARITY[rarityName] and not CONFIG.ALLOW_RARITY[string.upper(rarityName)] then 
+        return false 
+    end
     if data.Weight < CONFIG.MIN_WEIGHT then return false end
 
     local key = data.Player .. "|" .. data.Fish .. "|" .. tostring(data.Weight)
@@ -278,19 +342,32 @@ local function sendWebhook(data)
 
     local displayWeight = data.Weight >= 1000 and string.format("%.2fK kg", data.Weight/1000) or string.format("%.2f kg", data.Weight)
 
+    -- =====================================================
+    -- WARNA EMBED: Pakai warna chat (paling akurat)
+    -- =====================================================
+    local embedColor = 0xFFFFFF
+    if data.RarityColor then
+        embedColor = data.RarityColor[1] * 65536 + data.RarityColor[2] * 256 + data.RarityColor[3]
+    elseif rarity and rarity.Colors then
+        embedColor = rgbInt(rarity.Colors)
+    end
+
     local embed = {
         title = "✦ " .. string.upper(rarityName) .. " CATCH",
         description = "👤 **Pemain:** `" .. data.Player .. "`\n🎣 **Tangkapan:** `" .. data.Fish .. "`\n⚖ **Berat:** `" .. displayWeight .. "`\n🎲 **Peluang:** `1 in " .. tostring(data.Chance) .. "`",
-        color = rarity and rgbInt(rarity.Colors) or 0xFFFFFF,
+        color = embedColor,
         footer = { text = "LFAMILIA Minimalist Radar V5" },
         timestamp = os.date("!%Y-%m-%dT%H:%M:%SZ"),
     }
 
+    -- THUMBNAIL tetap dari FishDatabase
+    local fishData = resolveFish(data.Fish)
     if fishData and fishData.AssetId then
         local imgUrl = thumbnail(fishData.AssetId)
         if imgUrl then embed.thumbnail = { url = imgUrl } end
     end
 
+    -- MENTION
     local content = ""
     local rawMention = trim(CONFIG.MENTION)
     if rawMention ~= "" then
