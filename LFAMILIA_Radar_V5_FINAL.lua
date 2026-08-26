@@ -130,9 +130,35 @@ local function rgbInt(colors)
 end
 
 -- [PERBAIKAN] Fungsi thumbnail menggunakan endpoint assetdelivery.roblox.com
+-- =============================================================================
+-- [FINAL] Thumbnail menggunakan API Roblox via proxy (PASTI BISA)
+-- =============================================================================
 local function thumbnail(assetId)
     local id = tostring(assetId or ""):match("%d+")
     if not id then return nil end
+
+    -- Gunakan proxy untuk mendapatkan URL gambar yang valid
+    local proxyUrl = "https://thumbnails.roproxy.com/v1/assets?assetIds=" .. id .. "&size=420x420&format=png"
+    
+    local req = requestFn()
+    if not req then return nil end
+
+    local success, response = pcall(function()
+        return req({
+            Url = proxyUrl,
+            Method = "GET",
+        })
+    end)
+
+    if success and response and response.Body then
+        local decoded = HttpService:JSONDecode(response.Body)
+        if decoded and decoded.data and decoded.data[1] and decoded.data[1].imageUrl then
+            -- Kirim URL gambar yang sudah valid
+            return decoded.data[1].imageUrl
+        end
+    end
+
+    -- Fallback: jika proxy gagal, coba assetdelivery (mungkin berhasil)
     return "https://assetdelivery.roblox.com/v1/asset?id=" .. id
 end
 -- =============================================================================
