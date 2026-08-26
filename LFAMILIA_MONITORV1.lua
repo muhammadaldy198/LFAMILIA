@@ -170,52 +170,62 @@ end
 local function parseCatch(message)
     message = trim(message)
     if message == "" then return nil end
-    
-    local player, fish, weightStr, chance = message:match("([%w_]+)%s+obtained%s+a%s+(.-)%s+%(([%d%.%a]+)%s*kg%)%s+with%s+a%s+1%s+in%s+([%d%.,%s%a!]+)")
-    if not player then
-        player, fish, weightStr, chance = message:match("(.+)%s+obtained%s+a%s+(.-)%s+%(([%d%.%a]+)%s*kg%)%s+with%s+a%s+1%s+in%s+([%d%.,%s%a!]+)")
-    end
-    
-    if player and fish then
-        local cleanFish = trim(fish)
-        local r, g, b = nil, nil, nil
-        
-        -- =====================================================
-        -- EKSTRAK WARNA DARI RichText
-        -- =====================================================
-        local colorHex, fishName = cleanFish:match('<font color="([^"]+)">(.-)</font>')
-        if colorHex and fishName then
-            local hex = colorHex:gsub("#", "")
-            r = tonumber(hex:sub(1,2), 16)
-            g = tonumber(hex:sub(3,4), 16)
-            b = tonumber(hex:sub(5,6), 16)
-            cleanFish = trim(fishName)
-        else
-            local cr, cg, cb, fishName = cleanFish:match('<font color="rgb%((%d+),%s*(%d+),%s*(%d+)%)">(.-)</font>')
-            if cr and cg and cb and fishName then
-                r, g, b = tonumber(cr), tonumber(cg), tonumber(cb)
-                cleanFish = trim(fishName)
-            end
-        end
-        
-        -- Parsing Berat
-        local rawWeight = 0
-        local numericPart, kIndicator = weightStr:upper():match("([%d%.]+)([K]?)")
-        if numericPart then
-            rawWeight = tonumber(numericPart) or 0
-            if kIndicator == "K" then rawWeight = rawWeight * 1000 end
-        end
 
-        return {
-            Player = trim(player),
-            Fish = cleanFish,                     -- Nama ikan bersih (tanpa tag HTML)
-            Weight = rawWeight,
-            Chance = trim(chance):gsub(" chance!", ""):gsub("!", ""),
-            RawFish = trim(fish),                 -- (opsional untuk debug)
-            RarityColor = (r and g and b) and {r, g, b} or nil,  -- <-- SIMPAN RGB
-        }
+    -- =====================================================
+    -- POLA FINAL: HANYA "obtained" + support "a" / "an"
+    -- Contoh: 
+    --   Aldayy obtained a Rocky Scorpion (135Kg) with a 1M 4M chance!
+    --   Aldayy obtained an Elemental Tempestray (430K kg) with 1 in 1M chance!
+    -- =====================================================
+    local player, fish, weightStr, chance = message:match("^(.+)%s+obtained%s+[aA][nN]?%s+(.+)%s+%((.+)%)%s+with%s+[aA]?%s*(.+)%s+[Cc]hance[!]?$")
+
+    if not player then
+        return nil
     end
-    return nil
+
+    local cleanFish = trim(fish)
+    local r, g, b = nil, nil, nil
+
+    -- EKSTRAK WARNA (jika ada)
+    local colorHex, fishName = cleanFish:match('<font color="([^"]+)">(.-)</font>')
+    if colorHex and fishName then
+        local hex = colorHex:gsub("#", "")
+        r = tonumber(hex:sub(1,2), 16)
+        g = tonumber(hex:sub(3,4), 16)
+        b = tonumber(hex:sub(5,6), 16)
+        cleanFish = trim(fishName)
+    else
+        local cr, cg, cb, fishName = cleanFish:match('<font color="rgb%((%d+),%s*(%d+),%s*(%d+)%)">(.-)</font>')
+        if cr and cg and cb and fishName then
+            r, g, b = tonumber(cr), tonumber(cg), tonumber(cb)
+            cleanFish = trim(fishName)
+        end
+    end
+
+    -- PARSING BERAT (support K, M)
+    local rawWeight = 0
+    local numericPart = weightStr:match("([%d%.]+)")
+    if numericPart then
+        rawWeight = tonumber(numericPart) or 0
+        if weightStr:upper():find("M") then
+            rawWeight = rawWeight * 1000000
+        elseif weightStr:upper():find("K") then
+            rawWeight = rawWeight * 1000
+        end
+    end
+
+    -- PARSING CHANCE (bersihkan)
+    local cleanChance = trim(chance):gsub("[Cc]hance[!]?$", ""):gsub("!$", ""):gsub(" chance!$", "")
+    cleanChance = cleanChance:gsub("%s+", " "):gsub("^%s*(.-)%s*$", "%1")
+
+    return {
+        Player = trim(player),
+        Fish = cleanFish,
+        Weight = rawWeight,
+        Chance = cleanChance,
+        RawFish = trim(fish),
+        RarityColor = (r and g and b) and {r, g, b} or nil,
+    }
 end
 
 local function resolveFish(name)
@@ -992,48 +1002,34 @@ end
 -- [PERBAIKIAN UTAMA] Cara hook chat server yang lebih robust
 -- =============================================================================
 local function setupChatHook()
-    -- Opsi 1: Hook langsung ke TextChannel.ROBLOX (paling akurat untuk pesan server)
+    -- Metode 1: TextChannel.ROBLOX
     local success, channel = pcall(function()
         return TextChatService:WaitForChild("TextChannels"):WaitForChild("ROBLOX")
     end)
-    
     if success and channel then
         channel.OnIncomingMessage = function(message)
             if message and message.Text and message.Text ~= "" then
                 pcall(function() handleMessage(message.Text) end)
             end
         end
-        print("[Radar] Berhasil hook ke TextChannel.ROBLOX")
+        print("[Radar] ✅ Hook ke TextChannel.ROBLOX")
+        logError("✅ Hook chat aktif (TextChannel.ROBLOX)")
         return true
     end
-    
-    -- Opsi 2: Fallback ke TextChatService.OnIncomingMessage
-    if TextChatService and TextChatService.OnIncomingMessage then
+
+    -- Metode 2: Langsung set (tanpa baca)
+    pcall(function()
         TextChatService.OnIncomingMessage = function(message)
             if message and message.Text and message.Text ~= "" then
                 pcall(function() handleMessage(message.Text) end)
             end
         end
-        print("[Radar] Berhasil hook ke TextChatService.OnIncomingMessage")
-        return true
-    end
-    
-    -- Opsi 3: Fallback terakhir – pakai Chat service (jika game lawas)
-    local ChatService = game:GetService("Chat")
-    if ChatService then
-        ChatService.OnIncomingMessage = function(message)
-            if message and message.Text and message.Text ~= "" then
-                pcall(function() handleMessage(message.Text) end)
-            end
-        end
-        print("[Radar] Berhasil hook ke Chat service lawas")
-        return true
-    end
-    
-    logError("Tidak ada sistem chat yang bisa di-hook!")
-    return false
+    end)
+    print("[Radar] ✅ Hook ke OnIncomingMessage")
+    logError("✅ Hook chat aktif (OnIncomingMessage)")
+    return true
 end
-
+    
 -- Jalankan hook
 setupChatHook()
 
