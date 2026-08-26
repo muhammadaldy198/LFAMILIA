@@ -1,8 +1,6 @@
 -- =============================================================================
 -- BAGIAN 1 : HEADER, KONFIGURASI DASAR, DAN LAYANAN ROBLOX
 -- =============================================================================
--- FUNGSI: Mendapatkan service, mendeklarasikan CONFIG, dan state global.
--- =============================================================================
 
 local Players = game:GetService("Players")
 local TextChatService = game:GetService("TextChatService")
@@ -13,7 +11,7 @@ local LocalPlayer = Players.LocalPlayer
 
 local CONFIG = {
     WEBHOOK_URL = "",
-    JOIN_LEAVE_URL = "", -- TERPISAH: URL khusus untuk log masuk dan keluar pemain
+    JOIN_LEAVE_URL = "",
     FISH_DB_URL = "https://raw.githubusercontent.com/muhammadaldy198/LFAMILIA/refs/heads/main/FishDatabase.lua",
     RARITY_DB_URL = "https://raw.githubusercontent.com/muhammadaldy198/LFAMILIA/refs/heads/main/RarityDatabase.lua",
     VARIANT_DB_URL = "https://raw.githubusercontent.com/muhammadaldy198/LFAMILIA/refs/heads/main/VariantDatabase.lua",
@@ -23,7 +21,7 @@ local CONFIG = {
         Uncommon = true, Common = true,
     },
     MIN_WEIGHT = 0,
-    MENTION = "", -- Berisi ID Role atau ID User murni
+    MENTION = "",
     WEBHOOK_USERNAME = "LFAMILIA Radar (Fish It)",
 }
 
@@ -34,8 +32,6 @@ local CONFIG_FILE_2 = "LFAMILIA_Slot2.json"
 local CONFIG_FILE_3 = "LFAMILIA_Slot3.json"
 -- =============================================================================
 -- BAGIAN 2 : MANUAL DATA STORAGE ENGINE (SLOT BASED)
--- =============================================================================
--- FUNGSI: Menyimpan dan memuat konfigurasi serta mapping ke file JSON.
 -- =============================================================================
 
 local function getWriteFn() return writefile or (syn and syn.writefile) end
@@ -97,9 +93,7 @@ local function manualLoad(slot)
     return true, "Sukses memuat data"
 end
 -- =============================================================================
--- BAGIAN 3 : DATABASE PARSER, UTILITIES, & THUMBNAIL (FIX)
--- =============================================================================
--- FUNGSI: Mengunduh database dari GitHub, konversi warna, dan thumbnail.
+-- BAGIAN 3 : DATABASE PARSER, UTILITIES, & THUMBNAIL
 -- =============================================================================
 
 local function fetchLua(url)
@@ -129,54 +123,19 @@ local function rgbInt(colors)
     return 0xFFFFFF
 end
 
--- [PERBAIKAN] Fungsi thumbnail menggunakan endpoint assetdelivery.roblox.com
--- =============================================================================
--- [FINAL] Thumbnail menggunakan API Roblox via proxy (PASTI BISA)
--- =============================================================================
 local function thumbnail(assetId)
     local id = tostring(assetId or ""):match("%d+")
     if not id then return nil end
-
-    -- Gunakan proxy untuk mendapatkan URL gambar yang valid
-    local proxyUrl = "https://thumbnails.roproxy.com/v1/assets?assetIds=" .. id .. "&size=420x420&format=png"
-    
-    local req = requestFn()
-    if not req then return nil end
-
-    local success, response = pcall(function()
-        return req({
-            Url = proxyUrl,
-            Method = "GET",
-        })
-    end)
-
-    if success and response and response.Body then
-        local decoded = HttpService:JSONDecode(response.Body)
-        if decoded and decoded.data and decoded.data[1] and decoded.data[1].imageUrl then
-            -- Kirim URL gambar yang sudah valid
-            return decoded.data[1].imageUrl
-        end
-    end
-
-    -- Fallback: jika proxy gagal, coba assetdelivery (mungkin berhasil)
-    return "https://assetdelivery.roblox.com/v1/asset?id=" .. id
+    return "https://thumbnails.roproxy.com/v1/assets?assetIds=" .. id .. "&size=420x420&format=png"
 end
 -- =============================================================================
--- BAGIAN 4 : TEXT PARSER & FISH IDENTIFICATION LOGIC
--- =============================================================================
--- FUNGSI: Membaca string chat server dan mencocokkan parsial nama ikan ke database.
+-- BAGIAN 4 : TEXT PARSER & FISH IDENTIFICATION LOGIC (FINAL)
 -- =============================================================================
 
 local function parseCatch(message)
     message = trim(message)
     if message == "" then return nil end
 
-    -- =====================================================
-    -- POLA FINAL: HANYA "obtained" + support "a" / "an"
-    -- Contoh: 
-    --   Aldayy obtained a Rocky Scorpion (135Kg) with a 1M 4M chance!
-    --   Aldayy obtained an Elemental Tempestray (430K kg) with 1 in 1M chance!
-    -- =====================================================
     local player, fish, weightStr, chance = message:match("^(.+)%s+obtained%s+[aA][nN]?%s+(.+)%s+%((.+)%)%s+with%s+[aA]?%s*(.+)%s+[Cc]hance[!]?$")
 
     if not player then
@@ -186,7 +145,6 @@ local function parseCatch(message)
     local cleanFish = trim(fish)
     local r, g, b = nil, nil, nil
 
-    -- EKSTRAK WARNA (jika ada)
     local colorHex, fishName = cleanFish:match('<font color="([^"]+)">(.-)</font>')
     if colorHex and fishName then
         local hex = colorHex:gsub("#", "")
@@ -202,7 +160,6 @@ local function parseCatch(message)
         end
     end
 
-    -- PARSING BERAT (support K, M)
     local rawWeight = 0
     local numericPart = weightStr:match("([%d%.]+)")
     if numericPart then
@@ -214,7 +171,6 @@ local function parseCatch(message)
         end
     end
 
-    -- PARSING CHANCE (bersihkan)
     local cleanChance = trim(chance):gsub("[Cc]hance[!]?$", ""):gsub("!$", ""):gsub(" chance!$", "")
     cleanChance = cleanChance:gsub("%s+", " "):gsub("^%s*(.-)%s*$", "%1")
 
@@ -268,15 +224,11 @@ local function seenRecently(key)
     return old and (now - old) < 5
 end
 -- =============================================================================
--- BAGIAN 5 : WEBHOOK EMITTER & ERROR LOGGING (FIX)
--- =============================================================================
--- FUNGSI: Mengirim data tangkapan dan log join/leave. Ditambahkan log error ke UI.
+-- BAGIAN 5 : WEBHOOK EMITTER & ERROR LOGGING (SERVER)
 -- =============================================================================
 
--- Variabel referensi ke UI (akan diisi nanti saat GUI dibuat)
 local monitorLog = nil
 
--- Fungsi untuk mencatat error ke tab Monitor
 local function logError(errMsg)
     if not monitorLog then return end
     local current = monitorLog.Text
@@ -289,18 +241,14 @@ local function logError(errMsg)
     local newLog = "DETECTION LOG\n\n["..time.."] ❌ ERROR: " .. errMsg .. "\n" .. table.concat(lines)
     monitorLog.Text = newLog
 end
--- =============================================================================
--- [TAMBAHAN] Mencari rarity berdasarkan warna RGB (dari chat)
--- =============================================================================
+
 local function resolveRarityByColor(r, g, b)
     if not r or not g or not b then return nil end
-    
     for _, tier in pairs(RarityDatabase) do
         if tier.Colors then
             for _, color in ipairs(tier.Colors) do
                 if type(color) == "table" then
                     local cr, cg, cb = color[1], color[2], color[3]
-                    -- Toleransi ±5 karena server kadang beda tipis
                     if math.abs(cr - r) <= 5 and math.abs(cg - g) <= 5 and math.abs(cb - b) <= 5 then
                         return tier
                     end
@@ -323,7 +271,6 @@ local function sendWebhook(data)
         return false 
     end
 
-    -- PRIORITAS 1: Rarity dari WARNA CHAT
     local rarity = nil
     local rarityName = "Legendary"
     local embedColor = 0xFFFFFF
@@ -337,20 +284,17 @@ local function sendWebhook(data)
         end
     end
     
-    -- PRIORITAS 2: Fallback ke FishDatabase (jika warna tidak ditemukan)
     if not rarity then
         local fishData = resolveFish(data.Fish)
         rarity = resolveRarity(fishData)
         if rarity then 
             rarityName = rarity.Name 
         else
-            -- Jika ikan tidak dikenal, catat log dan batalkan
             logError("⚠️ Ikan tidak dikenal: " .. data.Fish .. " (tidak dikirim)")
             return false
         end
     end
 
-    -- FILTER kelangkaan
     if not CONFIG.ALLOW_RARITY[rarityName] and not CONFIG.ALLOW_RARITY[string.upper(rarityName)] then 
         return false 
     end
@@ -359,26 +303,16 @@ local function sendWebhook(data)
     local key = data.Player .. "|" .. data.Fish .. "|" .. tostring(data.Weight)
     if seenRecently(key) then return false end
 
-    -- Ambil asset ID untuk thumbnail
-    -- PRIORITAS 1: Asset ID dari preview (bypass)
-local assetId = data._assetId
-
--- PRIORITAS 2: Asset ID dari database
-if not assetId then
-    local fishData = resolveFish(data.Fish)
-    if fishData and fishData.AssetId then
-        assetId = tostring(fishData.AssetId):match("%d+")
+    -- Ambil Asset ID (prioritas: _assetId dari preview)
+    local assetId = data._assetId
+    if not assetId then
+        local fishData = resolveFish(data.Fish)
+        if fishData and fishData.AssetId then
+            assetId = tostring(fishData.AssetId):match("%d+")
+        end
     end
-end
 
--- DEBUG: Cek apakah assetId terkirim
-if assetId then
-    print("[DEBUG] Asset ID terkirim:", assetId)
-else
-    print("[DEBUG] Asset ID TIDAK ditemukan untuk:", data.Fish)
-    end
-    
-    -- Ambil varian (jika ada)
+    -- Ambil varian
     local variant = nil
     if data.RawFish then
         for _, v in pairs(VariantDatabase) do
@@ -392,11 +326,9 @@ else
         end
     end
 
-    -- Server ID dan waktu
     local server_id = game.JobId or ""
     local time_str = os.date("%H:%M WIB")
 
-    -- Mention
     local mention = ""
     local rawMention = trim(CONFIG.MENTION)
     if rawMention ~= "" then
@@ -411,9 +343,8 @@ else
         mention = (mention ~= "" and (mention .. " ") or "") .. "<@" .. tostring(mappedDiscord) .. ">"
     end
 
-    -- Payload untuk server PythonAnywhere
     local payload = {
-        discord_url = CONFIG.WEBHOOK_URL,   -- URL Discord tetap dari UI
+        discord_url = CONFIG.WEBHOOK_URL,
         player = data.Player,
         fish = data.Fish,
         weight = data.Weight,
@@ -427,8 +358,7 @@ else
         mention = mention
     }
 
-    -- Kirim ke SERVER (bukan langsung ke Discord)
-    local server_url = "https://Aldayyy.pythonanywhere.com/api/catch"  -- <-- GANTI dengan URL-mu
+    local server_url = "https://Aldayyy.pythonanywhere.com/api/catch"  -- GANTI DENGAN URL-MU
     local ok, err = pcall(function()
         req({
             Url = server_url,
@@ -448,21 +378,14 @@ else
 end
 
 local function sendJoinLeaveWebhook(playerName, action)
-    -- =====================================================
-    -- [PERUBAHAN] TIDAK ADA FALLBACK KE WEBHOOK UTAMA
-    -- Hanya kirim jika JOIN_LEAVE_URL diisi.
-    -- =====================================================
     if CONFIG.JOIN_LEAVE_URL == "" then return end
-    
     local req = requestFn()
     if not req then 
         logError("Tidak ada fungsi request untuk join/leave")
         return 
     end
-    
     local emoji = action == "JOINED" and "📥" or "📤"
     local color = action == "JOINED" and 0x2ECC71 or 0xE74C3C
-    
     local payload = {
         username = CONFIG.WEBHOOK_USERNAME .. " [Server Logs]",
         embeds = {{
@@ -475,7 +398,7 @@ local function sendJoinLeaveWebhook(playerName, action)
     }
     local ok, err = pcall(function() 
         req({ 
-            Url = CONFIG.JOIN_LEAVE_URL,  -- LANGSUNG PAKAI URL INI, TANPA FALLBACK
+            Url = CONFIG.JOIN_LEAVE_URL,
             Method = "POST", 
             Headers = {["Content-Type"]="application/json"}, 
             Body = HttpService:JSONEncode(payload) 
@@ -485,10 +408,8 @@ local function sendJoinLeaveWebhook(playerName, action)
         logError("Webhook join/leave gagal: " .. tostring(err))
     end
 end
--- =============================================================================
+    -- =============================================================================
 -- BAGIAN 6 : GUI – LAYOUT DASAR (FRAME, HEADER, MINIMIZE)
--- =============================================================================
--- FUNGSI: Membuat ScreenGui, Frame utama, header, dan tombol minimize.
 -- =============================================================================
 
 local gui = Instance.new("ScreenGui")
@@ -540,8 +461,6 @@ local tabs = {}
 local activeTab = "Home"
 -- =============================================================================
 -- BAGIAN 7 : GUI – HALAMAN HOME & STORAGE (SLOT SAVE/LOAD)
--- =============================================================================
--- FUNGSI: Membuat halaman Home, statistik, dan panel save/load manual.
 -- =============================================================================
 
 local function makePage(name)
@@ -595,7 +514,6 @@ local homeStatus = card(home, 55)
 text(homeStatus, "●  MONITOR ACTIVE", 5, 12, Color3.fromRGB(46,204,113), true)
 local homeStats = text(homeStatus, "Players 0  •  Detected 0  •  Sent 0", 26, 11, Color3.fromRGB(140,145,160))
 
--- Panel Storage (Save/Load 3 Slot)
 local storageCard = card(home, 75)
 text(storageCard, "💽 PROFILE DATA MANAGEMENT (MANUAL ONLY)", 4, 10, Color3.fromRGB(52,152,219), true)
 
@@ -644,17 +562,13 @@ loadBtn.Activated:Connect(function()
     storageMsg.Text = ok and "✅ Berhasil memuat seluruh data dari Slot " .. activeSlot or "❌ Gagal: " .. msg
 end)
 
--- Panel Last Activity
 local homeLast = card(home, 70)
 local homeLastText = text(homeLast, "📋 LAST ACTIVITY:\nWaiting for server catches...", 6, 11, Color3.fromRGB(220,225,235))
 homeLastText.Size = UDim2.new(1, -20, 1, -12)
 -- =============================================================================
 -- BAGIAN 8 : GUI – HALAMAN PLAYERS (MAPPING), MONITOR, FILTERS, WEBHOOK
 -- =============================================================================
--- FUNGSI: Membuat halaman mapping, monitor log, filter rarity, dan webhook.
--- =============================================================================
 
--- Halaman Players (Mapping)
 local playersPage = makePage("Players")
 local playerInfo = card(playersPage, 45)
 local playerInfoText = text(playerInfo, "🔗 MAPPING: Hubungkan Roblox ke ID Discord", 4, 11, Color3.fromRGB(160,165,180))
@@ -676,7 +590,6 @@ addMapping.BackgroundColor3 = Color3.fromRGB(35,38,50)
 addMapping.Parent = mappingBox
 Instance.new("UICorner", addMapping).CornerRadius = UDim.new(0, 6)
 
--- Halaman Monitor (dengan error logging)
 local monitorPage = makePage("Monitor")
 local monitorCard = card(monitorPage, 160)
 monitorLog = text(monitorCard, "DETECTION LOG\n\nMenunggu aktivitas server...", 4, 11, Color3.fromRGB(180,185,200))
@@ -697,7 +610,6 @@ clearLog.Activated:Connect(function()
     monitorLog.Text = "DETECTION LOG\n\nMenunggu aktivitas server..."
 end)
 
--- Halaman Filters
 local filtersPage = makePage("Filters")
 local filterCard = card(filtersPage, 150)
 text(filterCard, "PENYARING KELANGKAHAN", 4, 11, Color3.fromRGB(120,125,140), true)
@@ -724,7 +636,6 @@ for i, name in ipairs(rarityOrder) do
     end)
 end
 
--- Halaman Webhook
 local webhookPage = makePage("Webhook")
 local webhookCard = card(webhookPage, 185)
 text(webhookCard, "MANAJEMEN WEBHOOK JARINGAN", 4, 10, Color3.fromRGB(120,125,140), true)
@@ -864,9 +775,7 @@ mapCancel.Text = "BATAL"
 mapCancel.BackgroundColor3 = Color3.fromRGB(192,57,43)
 mapCancel.Parent = dialog
 -- =============================================================================
--- BAGIAN 9 : INTERAKSI TAB, DRAGGING, DAN MAPPING FUNGSI
--- =============================================================================
--- FUNGSI: Mengaktifkan tab, drag header, serta fungsi tombol mapping dan webhook.
+-- BAGIAN 9 : INTERAKSI TAB, DRAGGING, MAPPING, PREVIEW
 -- =============================================================================
 
 local function refreshMappings()
@@ -910,20 +819,14 @@ testWebhook.Activated:Connect(function()
         return 
     end
 
-    -- =====================================================
-    -- PREVIEW DATA SESUAI ASLI (Astralune = FORGOTTEN)
-    -- =====================================================
     local previewData = {
-    Player = LocalPlayer.Name,
-    Fish = "Astralune",
-    RawFish = "Gemstone Astralune",
-    Weight = 1200000,
-    Chance = "20,000,000",
-    RarityColor = {255, 255, 255},
-    _assetId = "90494527372442",  -- WAJIB ADA
-        }          -- Warna putih (FORGOTTEN)
-        -- Opsional: kita bisa langsung set rarityName agar tidak bergantung deteksi
-        -- tapi kita biarkan deteksi otomatis berdasarkan warna.
+        Player = LocalPlayer.Name,
+        Fish = "Astralune",
+        RawFish = "Gemstone Astralune",
+        Weight = 1200000,
+        Chance = "20,000,000",
+        RarityColor = {255, 255, 255},
+        _assetId = "90494527372442"
     }
     
     sendWebhook(previewData)
@@ -985,9 +888,7 @@ UIS.InputEnded:Connect(function(input)
     end 
 end)
 -- =============================================================================
--- BAGIAN 10 : REAL-TIME INTERCEPTOR (DIPERBAIKI UNTUK CHAT SERVER)
--- =============================================================================
--- FUNGSI: Menangkap chat server, join/leave, memperbarui statistik, dan refresh mapping.
+-- BAGIAN 10 : REAL-TIME INTERCEPTOR (CHAT HOOK & LOOP)
 -- =============================================================================
 
 local function updateUI(data, lineInfo)
@@ -1012,11 +913,7 @@ local function handleMessage(text)
     sendWebhook(data)
 end
 
--- =============================================================================
--- [PERBAIKIAN UTAMA] Cara hook chat server yang lebih robust
--- =============================================================================
 local function setupChatHook()
-    -- Metode 1: TextChannel.ROBLOX
     local success, channel = pcall(function()
         return TextChatService:WaitForChild("TextChannels"):WaitForChild("ROBLOX")
     end)
@@ -1031,7 +928,6 @@ local function setupChatHook()
         return true
     end
 
-    -- Metode 2: Langsung set (tanpa baca)
     pcall(function()
         TextChatService.OnIncomingMessage = function(message)
             if message and message.Text and message.Text ~= "" then
@@ -1043,13 +939,9 @@ local function setupChatHook()
     logError("✅ Hook chat aktif (OnIncomingMessage)")
     return true
 end
-    
--- Jalankan hook
+
 setupChatHook()
 
--- =============================================================================
--- PLAYER JOIN / LEAVE (tetap sama seperti sebelumnya)
--- =============================================================================
 Players.PlayerAdded:Connect(function(player)
     local logLine = "📥 Player Masuk: " .. player.Name
     pcall(function()
@@ -1078,9 +970,6 @@ Players.PlayerRemoving:Connect(function(player)
     pcall(function() sendJoinLeaveWebhook(player.Name, "LEFT") end)
 end)
 
--- =============================================================================
--- LOOP UPDATE STATISTIK
--- =============================================================================
 task.spawn(function()
     while true do
         pcall(function()
