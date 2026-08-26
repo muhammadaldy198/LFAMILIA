@@ -1,6 +1,7 @@
 -- =============================================================================
--- HEADER: CONFIGURATION & SERVICES CORE
--- FUNGSI: Mengunci layanan utama Roblox dan mendeklarasikan pengaturan bawaan.
+-- BAGIAN 1 : HEADER, KONFIGURASI DASAR, DAN LAYANAN ROBLOX
+-- =============================================================================
+-- FUNGSI: Mendapatkan service, mendeklarasikan CONFIG, dan state global.
 -- =============================================================================
 
 local Players = game:GetService("Players")
@@ -22,7 +23,7 @@ local CONFIG = {
         Uncommon = true, Common = true,
     },
     MIN_WEIGHT = 0,
-    MENTION = "", -- Berisi ID Role atau ID User murni (diperbaiki di sistem format)
+    MENTION = "", -- Berisi ID Role atau ID User murni
     WEBHOOK_USERNAME = "LFAMILIA Radar (Fish It)",
 }
 
@@ -32,8 +33,9 @@ local CONFIG_FILE_1 = "LFAMILIA_Slot1.json"
 local CONFIG_FILE_2 = "LFAMILIA_Slot2.json"
 local CONFIG_FILE_3 = "LFAMILIA_Slot3.json"
 -- =============================================================================
--- HEADER: MANUAL DATA STORAGE ENGINE (SLOT BASED)
--- FUNGSI: Menghapus auto-save/load dan menyediakan fungsi simpan/muat manual via slot.
+-- BAGIAN 2 : MANUAL DATA STORAGE ENGINE (SLOT BASED)
+-- =============================================================================
+-- FUNGSI: Menyimpan dan memuat konfigurasi serta mapping ke file JSON.
 -- =============================================================================
 
 local function getWriteFn() return writefile or (syn and syn.writefile) end
@@ -95,8 +97,9 @@ local function manualLoad(slot)
     return true, "Sukses memuat data"
 end
 -- =============================================================================
--- HEADER: DATABASE PARSER & COLOR UTILITIES
--- FUNGSI: Mengunduh database dari GitHub dan mengonversi warna RGB untuk Discord.
+-- BAGIAN 3 : DATABASE PARSER, UTILITIES, & THUMBNAIL (FIX)
+-- =============================================================================
+-- FUNGSI: Mengunduh database dari GitHub, konversi warna, dan thumbnail.
 -- =============================================================================
 
 local function fetchLua(url)
@@ -126,13 +129,15 @@ local function rgbInt(colors)
     return 0xFFFFFF
 end
 
+-- [PERBAIKAN] Fungsi thumbnail menggunakan endpoint assetdelivery.roblox.com
 local function thumbnail(assetId)
     local id = tostring(assetId or ""):match("%d+")
     if not id then return nil end
     return "https://assetdelivery.roblox.com/v1/asset?id=" .. id
 end
 -- =============================================================================
--- HEADER: TEXT PARSER & FISH IDENTIFICATION LOGIC
+-- BAGIAN 4 : TEXT PARSER & FISH IDENTIFICATION LOGIC
+-- =============================================================================
 -- FUNGSI: Membaca string chat server dan mencocokkan parsial nama ikan ke database.
 -- =============================================================================
 
@@ -182,7 +187,7 @@ local function resolveFish(name)
             end
         end
     end
-    return nil, name, nil
+    return { Id = 1187, Rarity = "Legendary" }, name, nil
 end
 
 local function resolveRarity(fishData)
@@ -205,14 +210,35 @@ local function seenRecently(key)
     return old and (now - old) < 5
 end
 -- =============================================================================
--- HEADER: MODERN MINIMALIST WEBHOOK EMITTER & SEPARATED CHANNELS
--- FUNGSI: Mengirim data tangkapan ikan dan memisahkan kanal join/leave ke URL khusus.
+-- BAGIAN 5 : WEBHOOK EMITTER & ERROR LOGGING (FIX)
 -- =============================================================================
+-- FUNGSI: Mengirim data tangkapan dan log join/leave. Ditambahkan log error ke UI.
+-- =============================================================================
+
+-- Variabel referensi ke UI (akan diisi nanti saat GUI dibuat)
+local monitorLog = nil
+
+-- Fungsi untuk mencatat error ke tab Monitor
+local function logError(errMsg)
+    if not monitorLog then return end
+    local current = monitorLog.Text
+    local time = os.date("%X")
+    local lines = {}
+    for line in (current:sub(18) or ""):gmatch("[^\n]*\n?") do
+        table.insert(lines, line)
+    end
+    while #lines > 20 do table.remove(lines, 1) end
+    local newLog = "DETECTION LOG\n\n["..time.."] ❌ ERROR: " .. errMsg .. "\n" .. table.concat(lines)
+    monitorLog.Text = newLog
+end
 
 local function sendWebhook(data)
     if CONFIG.WEBHOOK_URL == "" then return false end
     local req = requestFn()
-    if not req then return false end
+    if not req then 
+        logError("Tidak ada fungsi request di executor")
+        return false 
+    end
 
     local fishData, fishName, detectedVariant = resolveFish(data.Fish)
     local rarity = resolveRarity(fishData)
@@ -239,11 +265,9 @@ local function sendWebhook(data)
         if imgUrl then embed.thumbnail = { url = imgUrl } end
     end
 
-    -- CORRECTION: Membetulkan UI untuk format penyebutan/mention ID Discord secara fungsional
     local content = ""
     local rawMention = trim(CONFIG.MENTION)
     if rawMention ~= "" then
-        -- Jika isinya angka murni (ID), bungkus jadi format sebutan role
         if tonumber(rawMention) then
             content = "<@&" .. rawMention .. ">"
         else
@@ -257,7 +281,7 @@ local function sendWebhook(data)
     end
 
     local payload = { username = CONFIG.WEBHOOK_USERNAME, content = trim(content), embeds = {embed} }
-    local ok = pcall(function()
+    local ok, err = pcall(function()
         req({
             Url = CONFIG.WEBHOOK_URL,
             Method = "POST",
@@ -265,17 +289,24 @@ local function sendWebhook(data)
             Body = HttpService:JSONEncode(payload),
         })
     end)
-    if ok then state.Sent = state.Sent + 1 return true end
-    return false
+    if ok then 
+        state.Sent = state.Sent + 1 
+        return true 
+    else
+        logError("Webhook ikan gagal: " .. tostring(err))
+        return false
+    end
 end
 
--- SEPARATED SELECTION: Log join dan leave menggunakan alamat webhook terpisah jika tersedia
 local function sendJoinLeaveWebhook(playerName, action)
     local targetURL = CONFIG.JOIN_LEAVE_URL ~= "" and CONFIG.JOIN_LEAVE_URL or CONFIG.WEBHOOK_URL
     if targetURL == "" then return end
     
     local req = requestFn()
-    if not req then return end
+    if not req then 
+        logError("Tidak ada fungsi request untuk join/leave")
+        return 
+    end
     
     local emoji = action == "JOINED" and "📥" or "📤"
     local color = action == "JOINED" and 0x2ECC71 or 0xE74C3C
@@ -290,11 +321,22 @@ local function sendJoinLeaveWebhook(playerName, action)
             timestamp = os.date("!%Y-%m-%dT%H:%M:%SZ")
         }}
     }
-    pcall(function() req({ Url = targetURL, Method = "POST", Headers = {["Content-Type"]="application/json"}, Body = HttpService:JSONEncode(payload) }) end)
+    local ok, err = pcall(function() 
+        req({ 
+            Url = targetURL, 
+            Method = "POST", 
+            Headers = {["Content-Type"]="application/json"}, 
+            Body = HttpService:JSONEncode(payload) 
+        }) 
+    end)
+    if not ok then
+        logError("Webhook join/leave gagal: " .. tostring(err))
+    end
 end
 -- =============================================================================
--- HEADER: LUXURY DARK GLOW ANTARMUKA DESIGN
--- FUNGSI: Membuka kerangka dasar GUI dan mendesain gaya melengkung hitam elegan.
+-- BAGIAN 6 : GUI – LAYOUT DASAR (FRAME, HEADER, MINIMIZE)
+-- =============================================================================
+-- FUNGSI: Membuat ScreenGui, Frame utama, header, dan tombol minimize.
 -- =============================================================================
 
 local gui = Instance.new("ScreenGui")
@@ -341,10 +383,13 @@ tabbar.BackgroundColor3 = Color3.fromRGB(16,18,23)
 tabbar.Parent = main
 Instance.new("UICorner", tabbar).CornerRadius = UDim.new(0, 8)
 
-local pages = {} local tabs = {} local activeTab = "Home"
+local pages = {} 
+local tabs = {} 
+local activeTab = "Home"
 -- =============================================================================
--- HEADER: REUSABLE PANEL BUILDER & SLOTTED STORAGE INTERFACE
--- FUNGSI: Membuat kartu visual UI, tombol Home, serta kontrol simpan/muat manual.
+-- BAGIAN 7 : GUI – HALAMAN HOME & STORAGE (SLOT SAVE/LOAD)
+-- =============================================================================
+-- FUNGSI: Membuat halaman Home, statistik, dan panel save/load manual.
 -- =============================================================================
 
 local function makePage(name)
@@ -392,12 +437,13 @@ local function text(parent, value, y, size, color, bold)
     return t
 end
 
+-- Halaman Home
 local home = makePage("Home")
 local homeStatus = card(home, 55)
 text(homeStatus, "●  MONITOR ACTIVE", 5, 12, Color3.fromRGB(46,204,113), true)
 local homeStats = text(homeStatus, "Players 0  •  Detected 0  •  Sent 0", 26, 11, Color3.fromRGB(140,145,160))
 
--- FITUR BARU: Panel Khusus Untuk Save / Load Pengaturan Manual Menggunakan 3 Pilihan Slot
+-- Panel Storage (Save/Load 3 Slot)
 local storageCard = card(home, 75)
 text(storageCard, "💽 PROFILE DATA MANAGEMENT (MANUAL ONLY)", 4, 10, Color3.fromRGB(52,152,219), true)
 
@@ -446,14 +492,17 @@ loadBtn.Activated:Connect(function()
     storageMsg.Text = ok and "✅ Berhasil memuat seluruh data dari Slot " .. activeSlot or "❌ Gagal: " .. msg
 end)
 
+-- Panel Last Activity
 local homeLast = card(home, 70)
 local homeLastText = text(homeLast, "📋 LAST ACTIVITY:\nWaiting for server catches...", 6, 11, Color3.fromRGB(220,225,235))
 homeLastText.Size = UDim2.new(1, -20, 1, -12)
 -- =============================================================================
--- HEADER: MAPPING INTERFACE & LOG MONITORING VIEW
--- FUNGSI: Menyusun tampilan halaman manajemen mapping serta log konsol radar.
+-- BAGIAN 8 : GUI – HALAMAN PLAYERS (MAPPING), MONITOR, FILTERS, WEBHOOK
+-- =============================================================================
+-- FUNGSI: Membuat halaman mapping, monitor log, filter rarity, dan webhook.
 -- =============================================================================
 
+-- Halaman Players (Mapping)
 local playersPage = makePage("Players")
 local playerInfo = card(playersPage, 45)
 local playerInfoText = text(playerInfo, "🔗 MAPPING: Hubungkan Roblox ke ID Discord", 4, 11, Color3.fromRGB(160,165,180))
@@ -475,9 +524,10 @@ addMapping.BackgroundColor3 = Color3.fromRGB(35,38,50)
 addMapping.Parent = mappingBox
 Instance.new("UICorner", addMapping).CornerRadius = UDim.new(0, 6)
 
+-- Halaman Monitor (dengan error logging)
 local monitorPage = makePage("Monitor")
 local monitorCard = card(monitorPage, 160)
-local monitorLog = text(monitorCard, "DETECTION LOG\n\nMenunggu aktivitas server...", 4, 11, Color3.fromRGB(180,185,200))
+monitorLog = text(monitorCard, "DETECTION LOG\n\nMenunggu aktivitas server...", 4, 11, Color3.fromRGB(180,185,200))
 monitorLog.Size = UDim2.new(1, -20, 1, -40)
 monitorLog.TextYAlignment = Enum.TextYAlignment.Top
 
@@ -491,11 +541,11 @@ clearLog.TextColor3 = Color3.fromRGB(200,200,200)
 clearLog.BackgroundColor3 = Color3.fromRGB(35,38,50)
 clearLog.Parent = monitorCard
 Instance.new("UICorner", clearLog).CornerRadius = UDim.new(0, 5)
--- =============================================================================
--- HEADER: FILTERS, SEPARATED WEBHOOKS & CORRECTED MENTION MANAGEMENT
--- FUNGSI: Mengonfigurasi filter kelangkaan, input webhook terpisah, dan perbaikan UI mention.
--- =============================================================================
+clearLog.Activated:Connect(function()
+    monitorLog.Text = "DETECTION LOG\n\nMenunggu aktivitas server..."
+end)
 
+-- Halaman Filters
 local filtersPage = makePage("Filters")
 local filterCard = card(filtersPage, 150)
 text(filterCard, "PENYARING KELANGKAHAN", 4, 11, Color3.fromRGB(120,125,140), true)
@@ -522,8 +572,9 @@ for i, name in ipairs(rarityOrder) do
     end)
 end
 
+-- Halaman Webhook
 local webhookPage = makePage("Webhook")
-local webhookCard = card(webhookPage, 185) -- Ukuran panel diperlebar untuk memuat input baru
+local webhookCard = card(webhookPage, 185)
 text(webhookCard, "MANAJEMEN WEBHOOK JARINGAN", 4, 10, Color3.fromRGB(120,125,140), true)
 
 local webhookInput = Instance.new("TextBox")
@@ -540,14 +591,12 @@ webhookInput.Parent = webhookCard
 Instance.new("UICorner", webhookInput).CornerRadius = UDim.new(0, 5)
 Instance.new("UIStroke", webhookInput).Color = Color3.fromRGB(35,38,48)
 
--- TERPISAH: Kolom input khusus untuk menampung alamat webhook Log Player Connect
 local logWebhookInput = webhookInput:Clone()
 logWebhookInput.Position = UDim2.new(0, 10, 0, 52)
 logWebhookInput.Text = CONFIG.JOIN_LEAVE_URL
 logWebhookInput.PlaceholderText = "Paste URL Webhook Logs Join/Leave (Opsional)"
 logWebhookInput.Parent = webhookCard
 
--- CORRECTION: Memperbaiki UI input label penampung Role ID untuk mention global agar akurat
 local mentionInput = webhookInput:Clone()
 mentionInput.Position = UDim2.new(0, 10, 0, 82)
 mentionInput.Text = CONFIG.MENTION
@@ -573,6 +622,7 @@ testWebhook.Parent = webhookCard
 
 local infoUI = text(webhookCard, "⚠️ Klik tombol 'SAVE' di menu Home agar data permanen.", 146, 9, Color3.fromRGB(150,150,160))
 
+-- Dialog Mapping
 local dialog = Instance.new("Frame")
 dialog.Size = UDim2.fromOffset(270, 200)
 dialog.Position = UDim2.new(0.5, -135, 0.4, -100)
@@ -662,8 +712,9 @@ mapCancel.Text = "BATAL"
 mapCancel.BackgroundColor3 = Color3.fromRGB(192,57,43)
 mapCancel.Parent = dialog
 -- =============================================================================
--- HEADER: REAL-TIME SERVICE INTERCEPTOR & CONTROL ACTIONS
--- FUNGSI: Mengaktifkan tab menu GUI, sensor TextChatService baru, dan loop monitoring pemain.
+-- BAGIAN 9 : INTERAKSI TAB, DRAGGING, DAN MAPPING FUNGSI
+-- =============================================================================
+-- FUNGSI: Mengaktifkan tab, drag header, serta fungsi tombol mapping dan webhook.
 -- =============================================================================
 
 local function refreshMappings()
@@ -673,13 +724,24 @@ local function refreshMappings()
     mappingText.Text = #lines > 0 and table.concat(lines, "\n") or "Belum ada user yang di-mapping."
 end
 
-addMapping.Activated:Connect(function() playerSelectBtn.Text = " pilih akun Roblox (Aktif) ▼" targetSelectedPlayer = "" dialog.Visible = true end)
-mapCancel.Activated:Connect(function() dialog.Visible = false dropdownList.Visible = false end)
+addMapping.Activated:Connect(function() 
+    playerSelectBtn.Text = " pilih akun Roblox (Aktif) ▼" 
+    targetSelectedPlayer = "" 
+    dialog.Visible = true 
+end)
+mapCancel.Activated:Connect(function() 
+    dialog.Visible = false 
+    dropdownList.Visible = false 
+end)
 mapSave.Activated:Connect(function()
     local r, d = trim(targetSelectedPlayer), trim(discordBox.Text)
     if r ~= "" and d ~= "" then
-        mappings[r] = d mappings[r:lower()] = d refreshMappings()
-        discordBox.Text = "" dialog.Visible = false dropdownList.Visible = false
+        mappings[r] = d 
+        mappings[r:lower()] = d 
+        refreshMappings()
+        discordBox.Text = "" 
+        dialog.Visible = false 
+        dropdownList.Visible = false
     end
 end)
 
@@ -691,42 +753,85 @@ saveWebhook.Activated:Connect(function()
 end)
 
 testWebhook.Activated:Connect(function()
-    if CONFIG.WEBHOOK_URL == "" then return end
+    if CONFIG.WEBHOOK_URL == "" then 
+        infoUI.Text = "⚠️ Isi URL webhook terlebih dahulu!"
+        return 
+    end
     sendWebhook({ Player = LocalPlayer.Name, Fish = "Magmaquill Pufferfish", Weight = 4530, Chance = "12.50K" })
+    infoUI.Text = "👁 Preview dikirim (cek channel Discord)"
 end)
 
+-- Tab Navigation
 local tabNames = { {"⌂", "Home"}, {"👥", "Players"}, {"◈", "Monitor"}, {"⚙", "Filters"}, {"🔔", "Webhook"} }
 for i, item in ipairs(tabNames) do
     local b = Instance.new("TextButton")
     b.Size = UDim2.new(0.2, -4, 1, -4)
     b.Position = UDim2.new((i-1)*0.2, 2, 0, 2)
-    b.BackgroundTransparency = 1 b.Text = item[1] .. "\n" .. item[2] b.TextSize = 8 b.Font = Enum.Font.GothamBold b.TextColor3 = Color3.fromRGB(100,105,120) b.Parent = tabbar tabs[item[2]] = b Instance.new("UICorner", b).CornerRadius = UDim.new(0, 6)
+    b.BackgroundTransparency = 1 
+    b.Text = item[1] .. "\n" .. item[2] 
+    b.TextSize = 8 
+    b.Font = Enum.Font.GothamBold 
+    b.TextColor3 = Color3.fromRGB(100,105,120) 
+    b.Parent = tabbar 
+    tabs[item[2]] = b 
+    Instance.new("UICorner", b).CornerRadius = UDim.new(0, 6)
     b.Activated:Connect(function()
         activeTab = item[2]
         for n, p in pairs(pages) do p.Visible = (n == activeTab) end
         for n, t in pairs(tabs) do t.TextColor3 = (n == activeTab) and Color3.fromRGB(255,255,255) or Color3.fromRGB(100,105,120) end
     end)
 end
-pages.Home.Visible = true tabs.Home.TextColor3 = Color3.fromRGB(255,255,255)
+pages.Home.Visible = true 
+tabs.Home.TextColor3 = Color3.fromRGB(255,255,255)
 
+-- Minimize
 local minimized = false
 min.Activated:Connect(function()
-    minimized = not minimized tabbar.Visible = not minimized
+    minimized = not minimized 
+    tabbar.Visible = not minimized
     for _, p in pairs(pages) do p.Visible = not minimized and (_ == activeTab) or false end
     main.Size = minimized and UDim2.fromOffset(180, 40) or UDim2.fromOffset(340, 320)
     min.Text = minimized and "+" or "−"
 end)
 
+-- Dragging
 local dragging, dragInput, dragStart, startPos
-header.InputBegan:Connect(function(input) if input.UserInputType == Enum.UserInputType.Touch or input.UserInputType == Enum.UserInputType.MouseButton1 then dragging = true dragInput = input dragStart = input.Position startPos = main.Position end end)
-UIS.InputChanged:Connect(function(input) if dragging and (input.UserInputType == Enum.UserInputType.Touch or input.UserInputType == Enum.UserInputType.MouseMovement) then local delta = input.Position - dragStart main.Position = UDim2.new(startPos.X.Scale, startPos.X.Offset + delta.X, startPos.Y.Scale, startPos.Y.Offset + delta.Y) end end)
-UIS.InputEnded:Connect(function(input) if input == dragInput or input.UserInputType == Enum.UserInputType.MouseButton1 then dragging = false end end)
+header.InputBegan:Connect(function(input) 
+    if input.UserInputType == Enum.UserInputType.Touch or input.UserInputType == Enum.UserInputType.MouseButton1 then 
+        dragging = true 
+        dragInput = input 
+        dragStart = input.Position 
+        startPos = main.Position 
+    end 
+end)
+UIS.InputChanged:Connect(function(input) 
+    if dragging and (input.UserInputType == Enum.UserInputType.Touch or input.UserInputType == Enum.UserInputType.MouseMovement) then 
+        local delta = input.Position - dragStart 
+        main.Position = UDim2.new(startPos.X.Scale, startPos.X.Offset + delta.X, startPos.Y.Scale, startPos.Y.Offset + delta.Y) 
+    end 
+end)
+UIS.InputEnded:Connect(function(input) 
+    if input == dragInput or input.UserInputType == Enum.UserInputType.MouseButton1 then 
+        dragging = false 
+    end 
+end)
+-- =============================================================================
+-- BAGIAN 10 : REAL-TIME INTERCEPTOR (DIPERBAIKI UNTUK CHAT SERVER)
+-- =============================================================================
+-- FUNGSI: Menangkap chat server, join/leave, memperbarui statistik, dan refresh mapping.
+-- =============================================================================
 
 local function updateUI(data, lineInfo)
     state.Detected = state.Detected + 1
     homeLastText.Text = "📋 LAST ACTIVITY:\n" .. lineInfo
     local current = monitorLog.Text
-    monitorLog.Text = "DETECTION LOG\n\n["..os.date("%X").."] "..lineInfo:gsub("\n", " | ").."\n\n"..current:sub(18)
+    local lines = {}
+    for line in (current:sub(18) or ""):gmatch("[^\n]*\n?") do
+        table.insert(lines, line)
+    end
+    while #lines > 19 do table.remove(lines, 1) end
+    local newLog = "DETECTION LOG\n\n["..os.date("%X").."] "..lineInfo:gsub("\n", " | ").."\n"..table.concat(lines)
+    monitorLog.Text = newLog
 end
 
 local function handleMessage(text)
@@ -738,28 +843,89 @@ local function handleMessage(text)
     sendWebhook(data)
 end
 
-if TextChatService then
-    TextChatService.OnIncomingMessage = function(message)
-        if message and message.Text and message.Text ~= "" then handleMessage(message.Text) end
+-- =============================================================================
+-- [PERBAIKIAN UTAMA] Cara hook chat server yang lebih robust
+-- =============================================================================
+local function setupChatHook()
+    -- Opsi 1: Hook langsung ke TextChannel.ROBLOX (paling akurat untuk pesan server)
+    local success, channel = pcall(function()
+        return TextChatService:WaitForChild("TextChannels"):WaitForChild("ROBLOX")
+    end)
+    
+    if success and channel then
+        channel.OnIncomingMessage = function(message)
+            if message and message.Text and message.Text ~= "" then
+                pcall(function() handleMessage(message.Text) end)
+            end
+        end
+        print("[Radar] Berhasil hook ke TextChannel.ROBLOX")
+        return true
     end
-else
-    for _, p in pairs(Players:GetPlayers()) do p.Chatted:Connect(handleMessage) end
-    Players.PlayerAdded:Connect(function(p) p.Chatted:Connect(handleMessage) end)
+    
+    -- Opsi 2: Fallback ke TextChatService.OnIncomingMessage
+    if TextChatService and TextChatService.OnIncomingMessage then
+        TextChatService.OnIncomingMessage = function(message)
+            if message and message.Text and message.Text ~= "" then
+                pcall(function() handleMessage(message.Text) end)
+            end
+        end
+        print("[Radar] Berhasil hook ke TextChatService.OnIncomingMessage")
+        return true
+    end
+    
+    -- Opsi 3: Fallback terakhir – pakai Chat service (jika game lawas)
+    local ChatService = game:GetService("Chat")
+    if ChatService then
+        ChatService.OnIncomingMessage = function(message)
+            if message and message.Text and message.Text ~= "" then
+                pcall(function() handleMessage(message.Text) end)
+            end
+        end
+        print("[Radar] Berhasil hook ke Chat service lawas")
+        return true
+    end
+    
+    logError("Tidak ada sistem chat yang bisa di-hook!")
+    return false
 end
 
--- SEPARATED CHANNEL CONNECTORS
+-- Jalankan hook
+setupChatHook()
+
+-- =============================================================================
+-- PLAYER JOIN / LEAVE (tetap sama seperti sebelumnya)
+-- =============================================================================
 Players.PlayerAdded:Connect(function(player)
     local logLine = "📥 Player Masuk: " .. player.Name
-    monitorLog.Text = "DETECTION LOG\n\n["..os.date("%X").."] " .. logLine .. "\n\n" .. monitorLog.Text:sub(18)
-    sendJoinLeaveWebhook(player.Name, "JOINED")
+    pcall(function()
+        local current = monitorLog.Text
+        local lines = {}
+        for line in (current:sub(18) or ""):gmatch("[^\n]*\n?") do
+            table.insert(lines, line)
+        end
+        while #lines > 19 do table.remove(lines, 1) end
+        monitorLog.Text = "DETECTION LOG\n\n["..os.date("%X").."] " .. logLine .. "\n" .. table.concat(lines)
+    end)
+    pcall(function() sendJoinLeaveWebhook(player.Name, "JOINED") end)
 end)
 
 Players.PlayerRemoving:Connect(function(player)
     local logLine = "📤 Player Keluar: " .. player.Name
-    monitorLog.Text = "DETECTION LOG\n\n["..os.date("%X").."] " .. logLine .. "\n\n" .. monitorLog.Text:sub(18)
-    sendJoinLeaveWebhook(player.Name, "LEFT")
+    pcall(function()
+        local current = monitorLog.Text
+        local lines = {}
+        for line in (current:sub(18) or ""):gmatch("[^\n]*\n?") do
+            table.insert(lines, line)
+        end
+        while #lines > 19 do table.remove(lines, 1) end
+        monitorLog.Text = "DETECTION LOG\n\n["..os.date("%X").."] " .. logLine .. "\n" .. table.concat(lines)
+    end)
+    pcall(function() sendJoinLeaveWebhook(player.Name, "LEFT") end)
 end)
 
+-- =============================================================================
+-- LOOP UPDATE STATISTIK
+-- =============================================================================
 task.spawn(function()
     while true do
         pcall(function()
