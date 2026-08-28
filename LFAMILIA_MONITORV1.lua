@@ -25,7 +25,7 @@ local CONFIG = {
         Legendary = true,
     },
     MIN_WEIGHT = 0,
-    WEBHOOK_USERNAME = "LFAMILIA Radar (Fish It)",
+    WEBHOOK_USERNAME = "LFAMILIA WEBHOOK",
     BANNER_URL = "https://i.imgur.com/42wd0m0.png",
 }
 
@@ -944,7 +944,7 @@ local function sendWebhook(data)
     -- Bentuk data embed mentah disamakan dengan card final. Relay Python tetap
     -- membangun Components V2 sendiri; thumbnail ikan tidak diubah.
     local embed = {
-        title = "[" .. tostring(rarityName):upper() .. "] CAUGHT!",
+        title = "" .. tostring(rarityName):upper() .. " CAUGHT!",
         description = table.concat({
             "Player    : " .. tostring(data.Player),
             "Fish      : " .. tostring(data.Fish),
