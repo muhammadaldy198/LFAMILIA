@@ -1,19 +1,16 @@
 -- =============================================================================
--- LFAMILIA MONITOR V1 - FAIL-SAFE FIXED LOADER
+-- LFAMILIA MONITOR V1 - FIXED
 -- =============================================================================
--- Semua fungsi LFAMILIA_MONITORV1.lua tetap utuh.
--- Patch tambahan:
+-- Semua fungsi LFAMILIA_MONITORV1.lua tetap dipakai.
+-- Patch:
 --   • Shiny bukan Variant/Mutation.
---   • Big/Small/Tiny/Huge/Massive/Large/Giant/Mini/Shiny dapat bertumpuk.
+--   • Big/Small/Tiny/Huge/Massive/Large/Giant/Mini/Shiny bisa bertumpuk.
 --   • Big Shiny Astralune -> lookup AssetId Astralune.
 --   • Shiny Giant Squid -> lookup Giant Squid.
---   • Gemstone Big Shiny Ruby / Big Shiny Gemstone Ruby -> Ruby + Gemstone.
---   • Filter khusus RUBY + GEMSTONE.
+--   • Big Shiny Gemstone Ruby -> Ruby + Mutation Gemstone + AssetId Ruby.
+--   • Filter RUBY + GEMSTONE tampil di CONFIG > CATCH FILTERS.
+--   • Filter ikut SAVE/LOAD slot.
 --   • Border/divider UI lebih jelas.
---
--- FAIL SAFE:
--- Jika salah satu patch penting gagal / compile error / runtime error,
--- monitor ORIGINAL otomatis dijalankan agar UI tidak mati total.
 -- =============================================================================
 
 local SOURCE_URL = "https://raw.githubusercontent.com/muhammadaldy198/LFAMILIA/refs/heads/main/LFAMILIA_MONITORV1.lua"
@@ -28,16 +25,14 @@ if not okHttp or type(originalSource) ~= "string" or originalSource == "" then
 end
 
 local source = originalSource
-local failedRequired = false
 local applied = 0
-local skipped = 0
+local missing = {}
 
-local function replaceRequired(oldText, newText, label)
+local function replaceOnce(oldText, newText, label, required)
     local s, e = string.find(source, oldText, 1, true)
     if not s then
-        failedRequired = true
-        skipped = skipped + 1
-        warn("[LFAMILIA FIX] REQUIRED PATCH MISSING: " .. tostring(label))
+        table.insert(missing, tostring(label))
+        warn("[LFAMILIA FIX] Patch tidak ditemukan: " .. tostring(label))
         return false
     end
 
@@ -46,49 +41,63 @@ local function replaceRequired(oldText, newText, label)
     return true
 end
 
-local function replaceOptional(oldText, newText, label)
-    local s, e = string.find(source, oldText, 1, true)
-    if not s then
-        skipped = skipped + 1
-        warn("[LFAMILIA FIX] Optional patch skipped: " .. tostring(label))
-        return false
+local function replaceAll(oldText, newText)
+    local count = 0
+    while true do
+        local s, e = string.find(source, oldText, 1, true)
+        if not s then break end
+        source = source:sub(1, s - 1) .. newText .. source:sub(e + 1)
+        count = count + 1
     end
-
-    source = source:sub(1, s - 1) .. newText .. source:sub(e + 1)
-    applied = applied + 1
-    return true
-end
-
-local function runOriginal(reason)
-    warn("[LFAMILIA FIX] Fallback ORIGINAL: " .. tostring(reason or "unknown"))
-
-    local compiledOriginal, originalCompileError = loadstring(originalSource)
-    if not compiledOriginal then
-        warn("[LFAMILIA FIX] Original compile error: " .. tostring(originalCompileError))
-        return
-    end
-
-    local okRun, runError = pcall(compiledOriginal)
-    if not okRun then
-        warn("[LFAMILIA FIX] Original runtime error: " .. tostring(runError))
-    end
+    if count > 0 then applied = applied + count end
+    return count
 end
 
 -- =============================================================================
--- 1. SPECIAL FILTER CONFIG
+-- 1. CONFIG + SAVE/LOAD RUBY GEMSTONE FILTER
 -- =============================================================================
 
-replaceRequired(
-    '    BANNER_URL = "https://i.imgur.com/42wd0m0.png",\n}',
-    '    BANNER_URL = "https://i.imgur.com/42wd0m0.png",\n    SPECIAL_FILTERS = {\n        RUBY_GEMSTONE = true,\n    },\n}',
-    "SPECIAL_FILTERS config"
+replaceOnce(
+    '    BANNER_URL = "https://i.imgur.com/42wd0m0.png",',
+    [[    BANNER_URL = "https://i.imgur.com/42wd0m0.png",
+    SPECIAL_FILTERS = {
+        RUBY_GEMSTONE = true,
+    },]],
+    "SPECIAL_FILTERS config",
+    true
+)
+
+replaceOnce(
+    [[            WEBHOOK_USERNAME = CONFIG.WEBHOOK_USERNAME,
+        },]],
+    [[            WEBHOOK_USERNAME = CONFIG.WEBHOOK_USERNAME,
+            SPECIAL_FILTERS = CONFIG.SPECIAL_FILTERS,
+        },]],
+    "SAVE SPECIAL_FILTERS",
+    false
+)
+
+replaceOnce(
+    [[        if type(data.CONFIG.WEBHOOK_USERNAME) == "string" then
+            CONFIG.WEBHOOK_USERNAME = data.CONFIG.WEBHOOK_USERNAME
+        end]],
+    [[        if type(data.CONFIG.WEBHOOK_USERNAME) == "string" then
+            CONFIG.WEBHOOK_USERNAME = data.CONFIG.WEBHOOK_USERNAME
+        end
+
+        if type(data.CONFIG.SPECIAL_FILTERS) == "table" then
+            CONFIG.SPECIAL_FILTERS = CONFIG.SPECIAL_FILTERS or {}
+            CONFIG.SPECIAL_FILTERS.RUBY_GEMSTONE = data.CONFIG.SPECIAL_FILTERS.RUBY_GEMSTONE ~= false
+        end]],
+    "LOAD SPECIAL_FILTERS",
+    false
 )
 
 -- =============================================================================
--- 2. DISPLAY MODIFIERS
+-- 2. SHINY / SIZE DISPLAY MODIFIERS
 -- =============================================================================
 
-local displayHelper = [[local DISPLAY_ONLY_CATCH_MODIFIERS = {
+local displayHelpers = [[local DISPLAY_ONLY_CATCH_MODIFIERS = {
     shiny = true,
     big = true,
     small = true,
@@ -115,16 +124,17 @@ local function isDisplayOnlyCatchModifier(text)
     return count > 0
 end
 
+-- Mendeteksi Variant walaupun berada setelah Big/Shiny.
+-- Gemstone Big Shiny Ruby  -> Gemstone + Big Shiny Ruby
+-- Big Shiny Gemstone Ruby  -> Gemstone + Big Shiny Ruby
 local function getVariantFromCatchName(text)
     local requested = trim(text)
 
-    -- Variant langsung di depan, contoh: Gemstone Big Shiny Ruby.
     local directName, directFish, directData = getVariantFromName(requested)
     if directName then
         return directName, directFish, directData
     end
 
-    -- Display modifier di depan, contoh: Big Shiny Gemstone Ruby.
     local displayWords = {}
     local current = requested
 
@@ -151,34 +161,38 @@ end
 
 local function parseCatch(message)]]
 
-replaceRequired(
+replaceOnce(
     "local function parseCatch(message)",
-    displayHelper,
-    "display modifier helpers"
+    displayHelpers,
+    "display modifier helpers",
+    true
 )
 
-replaceRequired(
+replaceOnce(
     "        variantName, cleanFish = getVariantFromName(caughtText)",
     "        variantName, cleanFish = getVariantFromCatchName(caughtText)",
-    "variant parser"
+    "parseCatch variant order",
+    true
 )
 
-replaceOptional(
+replaceOnce(
     '            if index > 1 and not span.Text:find("%([^)]-%)") then',
-    '            if index > 1\n                and not span.Text:find("%([^)]-%)")\n                and not isDisplayOnlyCatchModifier(span.Text) then',
-    "Shiny RGB guard"
+    [[            if index > 1
+                and not span.Text:find("%([^)]-%)")
+                and not isDisplayOnlyCatchModifier(span.Text) then]],
+    "Shiny RGB guard",
+    false
 )
 
 -- =============================================================================
--- 3. FIXED LOOKUP RESOLVER
+-- 3. FIXED DATABASE / ASSET LOOKUP
 -- =============================================================================
 
-local resolverHelper = [[local function stripDisplayPrefixesForLookup(name)
+local resolverHelpers = [[local function stripDisplayPrefixesForLookup(name)
     local requested = trim(name)
     if requested == "" then return requested end
 
-    -- Exact database match selalu menang.
-    -- Giant Squid tetap Giant Squid, bukan Squid.
+    -- Exact DB match selalu menang; Giant Squid tidak akan dipotong.
     local _, exactName = findFishExact(requested)
     if exactName then return exactName end
 
@@ -202,11 +216,11 @@ local function resolveFishFixed(name)
     local requested = trim(name)
     if requested == "" then return nil, requested, nil end
 
-    -- Exact catchable.
+    -- 1. Exact fish/catchable.
     local data, realName = findFishExact(requested)
     if data then return data, realName, nil end
 
-    -- Variant, termasuk variant setelah Big/Shiny.
+    -- 2. Variant, termasuk sesudah Big/Shiny.
     local variantName, cleanFish, variantData = getVariantFromCatchName(requested)
     if variantName then
         local lookupName = stripDisplayPrefixesForLookup(cleanFish)
@@ -214,12 +228,12 @@ local function resolveFishFixed(name)
         if data then return data, realName, variantData end
     end
 
-    -- Shiny/Big tanpa variant.
+    -- 3. Shiny/Big tanpa variant.
     local lookupName = stripDisplayPrefixesForLookup(requested)
     data, realName = findFishExact(lookupName)
     if data then return data, realName, nil end
 
-    -- Seluruh behavior original tetap sebagai fallback.
+    -- 4. Kompatibilitas resolver lama.
     return resolveFish(requested)
 end
 
@@ -241,7 +255,7 @@ end
 local function isRubyGemstoneCatch(data)
     if not data then return false end
 
-    local fishData, realName = resolveFishFixed(data.Fish or data.RawFish or "")
+    local fishData, realName = resolveFishFixed(data.Fish or "")
     if not fishData or not realName or tostring(realName):lower() ~= "ruby" then
         fishData, realName = resolveFishFixed(data.RawFish or "")
     end
@@ -256,108 +270,189 @@ end
 
 local function sendWebhook(data)]]
 
-replaceRequired(
+replaceOnce(
     "local function sendWebhook(data)",
-    resolverHelper,
-    "fixed resolver"
+    resolverHelpers,
+    "fixed resolver",
+    true
 )
 
--- sendWebhook punya dua lookup database: rarity dan AssetId.
-local lookupNeedle = "        local fishData = resolveFish(data.Fish)"
-local lookupReplacement = "        local fishData = resolveFishFixed(data.Fish)"
+-- Ganti lookup DB pada sendWebhook untuk rarity + AssetId.
+replaceAll(
+    "        local fishData = resolveFish(data.Fish)",
+    "        local fishData = resolveFishFixed(data.Fish)"
+)
 
-for _ = 1, 2 do
-    local s, e = string.find(source, lookupNeedle, 1, true)
-    if s then
-        source = source:sub(1, s - 1) .. lookupReplacement .. source:sub(e + 1)
-        applied = applied + 1
-    else
-        skipped = skipped + 1
-        break
+replaceOnce(
+    "    -- PRIORITAS 1: Rarity dari WARNA CHAT",
+    [[    local specialRubyGemstone = isRubyGemstoneCatch(data)
+
+    -- PRIORITAS 1: Rarity dari WARNA CHAT]],
+    "special Ruby state",
+    true
+)
+
+-- Ruby + Gemstone jangan dibatalkan jika rarity DB tidak ditemukan.
+replaceOnce(
+    [[        if rarity then 
+            rarityName = rarity.Name 
+        else
+            -- Jika ikan tidak dikenal, catat log dan batalkan
+            logError("⚠️ Ikan tidak dikenal: " .. data.Fish .. " (tidak dikirim)")
+            return false
+        end]],
+    [[        if rarity then 
+            rarityName = rarity.Name
+        elseif specialRubyGemstone then
+            rarityName = "RUBY GEMSTONE"
+            embedColor = 0xE0115F
+        else
+            -- Jika ikan tidak dikenal, catat log dan batalkan
+            logError("⚠️ Ikan tidak dikenal: " .. data.Fish .. " (tidak dikirim)")
+            return false
+        end]],
+    "Ruby rarity fallback",
+    false
+)
+
+replaceOnce(
+    "    -- FILTER kelangkaan",
+    [[    -- FILTER KHUSUS RUBY + GEMSTONE
+    if specialRubyGemstone then
+        CONFIG.SPECIAL_FILTERS = CONFIG.SPECIAL_FILTERS or {RUBY_GEMSTONE = true}
+        if CONFIG.SPECIAL_FILTERS.RUBY_GEMSTONE ~= true then
+            return false
+        end
     end
-end
 
-replaceRequired(
-    "    -- PRIORITAS 1: Rarity dari WARNA CHAT\n    local rarity = nil",
-    "    local specialRubyGemstone = isRubyGemstoneCatch(data)\n\n    -- PRIORITAS 1: Rarity dari WARNA CHAT\n    local rarity = nil",
-    "special Ruby state"
+    -- FILTER kelangkaan]],
+    "Ruby filter gate prelude",
+    true
 )
 
-replaceRequired(
-    "    -- FILTER kelangkaan\n    if not CONFIG.ALLOW_RARITY[rarityName] and not CONFIG.ALLOW_RARITY[string.upper(rarityName)] then \n        return false \n    end\n    if data.Weight < CONFIG.MIN_WEIGHT then return false end",
-    "    -- FILTER kelangkaan + RUBY GEMSTONE SPECIAL FILTER\n    if specialRubyGemstone then\n        CONFIG.SPECIAL_FILTERS = CONFIG.SPECIAL_FILTERS or {RUBY_GEMSTONE = true}\n        if CONFIG.SPECIAL_FILTERS.RUBY_GEMSTONE ~= true then\n            return false\n        end\n    elseif not CONFIG.ALLOW_RARITY[rarityName]\n        and not CONFIG.ALLOW_RARITY[string.upper(rarityName)] then\n        return false\n    end\n\n    if data.Weight < CONFIG.MIN_WEIGHT then return false end",
-    "Ruby Gemstone filter gate"
+replaceOnce(
+    "    if not CONFIG.ALLOW_RARITY[rarityName] and not CONFIG.ALLOW_RARITY[string.upper(rarityName)] then ",
+    "    if not specialRubyGemstone and not CONFIG.ALLOW_RARITY[rarityName] and not CONFIG.ALLOW_RARITY[string.upper(rarityName)] then ",
+    "Ruby bypass rarity filter",
+    true
 )
 
-replaceRequired(
+replaceOnce(
     "    local variant = data.Variant or data.Mutation",
     "    local variant = getEffectiveCatchVariant(data)",
-    "effective variant"
+    "effective variant",
+    false
 )
 
 -- =============================================================================
--- 4. UI SPECIAL FILTER
--- Semua styling UI optional, jadi tidak dapat mematikan monitor.
+-- 4. VISIBLE RUBY + GEMSTONE BUTTON IN CONFIG
 -- =============================================================================
 
-replaceOptional(
+replaceOnce(
     "local filterCard = card(filtersPage, 232, THEME.Orange)",
-    "local filterCard = card(filtersPage, 294, THEME.Orange)",
-    "filter card height"
+    "local filterCard = card(filtersPage, 292, THEME.Orange)",
+    "filter card height",
+    true
 )
 
-local specialUI = [[CONFIG.SPECIAL_FILTERS = CONFIG.SPECIAL_FILTERS or {RUBY_GEMSTONE = true}
+-- Geser MIN WEIGHT ke bawah untuk memberi ruang tombol special filter.
+replaceOnce(
+    "minWeightInput.Position = UDim2.new(0, 13, 0, 164)",
+    "minWeightInput.Position = UDim2.new(0, 13, 0, 224)",
+    "min weight input position",
+    true
+)
 
-local specialFilterLabel = text(filterCard, "SPECIAL CATCH", 141, 9, THEME.Muted, true)
+replaceOnce(
+    'local minWeightLabel = text(filterCard, "MIN WEIGHT (KG)", 143, 9, THEME.Muted, true)',
+    'local minWeightLabel = text(filterCard, "MIN WEIGHT (KG)", 203, 9, THEME.Muted, true)',
+    "min weight label y",
+    true
+)
+
+replaceOnce(
+    "minWeightLabel.Position = UDim2.new(0.5, 4, 0, 168)",
+    "minWeightLabel.Position = UDim2.new(0.5, 4, 0, 228)",
+    "min weight hint position",
+    true
+)
+
+local specialFilterUI = [[CONFIG.SPECIAL_FILTERS = CONFIG.SPECIAL_FILTERS or {RUBY_GEMSTONE = true}
+
+local specialFilterLabel = text(filterCard, "SPECIAL CATCH", 140, 9, THEME.Muted, true)
 specialFilterLabel.Size = UDim2.new(1, -26, 0, 18)
 
 local specialRubyGemstoneButton = makeButton(
     filterCard,
-    "RUBY + GEMSTONE  " .. (CONFIG.SPECIAL_FILTERS.RUBY_GEMSTONE and "✓" or "×"),
-    UDim2.new(0, 13, 0, 163),
+    "◆  RUBY + GEMSTONE  " .. (CONFIG.SPECIAL_FILTERS.RUBY_GEMSTONE and "✓" or "×"),
+    UDim2.new(0, 13, 0, 161),
     UDim2.new(1, -26, 0, 34),
     CONFIG.SPECIAL_FILTERS.RUBY_GEMSTONE and THEME.Pink or THEME.Surface2
 )
 
 specialRubyGemstoneButton.Activated:Connect(function()
     CONFIG.SPECIAL_FILTERS.RUBY_GEMSTONE = not (CONFIG.SPECIAL_FILTERS.RUBY_GEMSTONE == true)
+
     local enabled = CONFIG.SPECIAL_FILTERS.RUBY_GEMSTONE == true
-    specialRubyGemstoneButton.Text = "RUBY + GEMSTONE  " .. (enabled and "✓" or "×")
+    specialRubyGemstoneButton.Text = "◆  RUBY + GEMSTONE  " .. (enabled and "✓" or "×")
     specialRubyGemstoneButton.BackgroundColor3 = enabled and THEME.Pink or THEME.Surface2
+
+    appendMonitorLog(
+        enabled and "✅" or "⏸",
+        "Ruby + Gemstone filter " .. (enabled and "ON" or "OFF")
+    )
 end)
 
-local minWeightInput = Instance.new("TextBox")
-minWeightInput.Position = UDim2.new(0, 13, 0, 229)]]
+local minWeightInput = Instance.new("TextBox")]]
 
-replaceOptional(
-    'local minWeightInput = Instance.new("TextBox")\nminWeightInput.Position = UDim2.new(0, 13, 0, 164)',
-    specialUI,
-    "special filter UI"
+replaceOnce(
+    'local minWeightInput = Instance.new("TextBox")',
+    specialFilterUI,
+    "VISIBLE Ruby Gemstone button",
+    true
 )
 
-replaceOptional(
-    'local minWeightLabel = text(filterCard, "MIN WEIGHT (KG)", 143, 9, THEME.Muted, true)\nminWeightLabel.Position = UDim2.new(0.5, 4, 0, 168)',
-    'local minWeightLabel = text(filterCard, "MIN WEIGHT (KG)", 208, 9, THEME.Muted, true)\nminWeightLabel.Position = UDim2.new(0.5, 4, 0, 233)',
-    "min weight UI"
+-- Saat LOAD slot, refresh keadaan tombol special filter juga.
+replaceOnce(
+    "    updateWebhookToggleUI()\nend",
+    [[    if specialRubyGemstoneButton then
+        CONFIG.SPECIAL_FILTERS = CONFIG.SPECIAL_FILTERS or {RUBY_GEMSTONE = true}
+        local enabled = CONFIG.SPECIAL_FILTERS.RUBY_GEMSTONE == true
+        specialRubyGemstoneButton.Text = "◆  RUBY + GEMSTONE  " .. (enabled and "✓" or "×")
+        specialRubyGemstoneButton.BackgroundColor3 = enabled and THEME.Pink or THEME.Surface2
+    end
+
+    updateWebhookToggleUI()
+end]],
+    "sync Ruby filter button",
+    false
 )
 
 -- =============================================================================
--- 5. BORDER + DIVIDER
+-- 5. UI BORDER / DIVIDER
 -- =============================================================================
 
-replaceOptional("outline.Thickness = 1.4", "outline.Thickness = 1.8", "main border")
-replaceOptional(
+replaceOnce("outline.Thickness = 1.4", "outline.Thickness = 1.8", "main border", false)
+
+replaceOnce(
     "tabStroke.Transparency = 0.45",
-    "tabStroke.Transparency = 0.12\ntabStroke.Thickness = 1.35",
-    "sidebar border"
+    [[tabStroke.Transparency = 0.12
+tabStroke.Thickness = 1.35]],
+    "sidebar border",
+    false
 )
-replaceOptional(
+
+replaceOnce(
     "    addStroke(frame, THEME.Border, 0.35)",
     "    addStroke(frame, THEME.Border, 0.10)",
-    "card border"
+    "card border",
+    false
 )
-replaceOptional(
-    "    addCorner(stripe, 2)\n\n    return frame",
+
+replaceOnce(
+    [[    addCorner(stripe, 2)
+
+    return frame]],
     [[    addCorner(stripe, 2)
 
     local divider = Instance.new("Frame")
@@ -370,34 +465,27 @@ replaceOptional(
     divider.Parent = frame
 
     return frame]],
-    "card divider"
+    "card divider",
+    false
 )
 
 -- =============================================================================
--- COMPILE + RUN WITH FALLBACK
+-- 6. COMPILE + RUN
 -- =============================================================================
-
-if failedRequired then
-    runOriginal("required patch missing")
-    return
-end
 
 local compiled, compileError = loadstring(source)
 if not compiled then
-    warn("[LFAMILIA FIX] Patched compile error: " .. tostring(compileError))
-    runOriginal("patched source compile error")
+    warn("[LFAMILIA FIX] COMPILE ERROR: " .. tostring(compileError))
+    warn("[LFAMILIA FIX] Missing patches: " .. table.concat(missing, ", "))
     return
 end
 
 print(
-    "[LFAMILIA FIX] Patched source ready | Applied="
-    .. tostring(applied)
-    .. " | Skipped="
-    .. tostring(skipped)
+    "[LFAMILIA FIX] READY | Applied=" .. tostring(applied)
+    .. " | Missing=" .. tostring(#missing)
 )
 
 local okRun, runError = pcall(compiled)
 if not okRun then
-    warn("[LFAMILIA FIX] Patched runtime error: " .. tostring(runError))
-    runOriginal("patched source runtime error")
+    warn("[LFAMILIA FIX] RUNTIME ERROR: " .. tostring(runError))
 end
