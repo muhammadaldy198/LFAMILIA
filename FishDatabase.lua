@@ -2,7 +2,7 @@
 -- Cleaned directly from the latest mixed scan using the previous clean FishDatabase as baseline.
 -- Includes user-confirmed fishable specials: Ruby, Withering Core, Runic Enchant Stone.
 -- Ambiguous non-fish records are kept out and listed in FishDatabase_REVIEW.txt.
--- Entries: 870
+-- Entries:
 
 return {
     ["Enchanted Angelfish"] = { Id = 14, AssetId = "rbxassetid://108347802265821" },
@@ -875,4 +875,7 @@ return {
     ["Frostbound Oracle"] = { Id = 1220, AssetId = "rbxassetid://92877677335286" },
     ["Tribunal Withering Core"] = { Id = 1222, AssetId = "rbxassetid://123462808567789" },
     ["Ashen Kingfish"] = { Id = 1224, AssetId = "rbxassetid://75710475218086" },
+    ["Mr Money Bags"] = { Id = 1225, AssetId = "rbxassetid://79425130872856" },
+    ["Everbloom"] = { Id = 1227, AssetId = "rbxassetid://119244536069110" },
+    ["VeloByte"] = { Id = 1246, AssetId = "rbxassetid://87480890153006" },    
 }
